@@ -9,6 +9,7 @@
  */
 
 import * as crypto from "crypto";
+import type { MidEdgeRange } from "./types";
 
 // ─── Wallets ────────────────────────────────────────────────────────────────
 
@@ -189,7 +190,7 @@ const BASE_FILTER = {
   standardSize: 10,
   priceFloor: 0.70,
   priceCeiling: 1.0,
-  midEdgeThreshold: -0.05,
+  midEdgeRanges: [{ operator: "lt" as const, value: -0.05 }] as MidEdgeRange[],
   edgeVsSpotEnabled: true,
   edgeVsSpotThreshold: 0.0,
   momentumRequired: true,

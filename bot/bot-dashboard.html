@@ -186,6 +186,14 @@ tr.stack-entry { border-left: 3px solid var(--green-stack); }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
 .dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
 .dot.off { background: var(--red); }
+
+/* LIVE override label */
+.live-override-label {
+  font-size: 0.65rem;
+  color: #f87171;
+  margin-left: 0.5rem;
+  font-style: italic;
+}
 </style>
 </head>
 <body>
@@ -354,32 +362,39 @@ tr.stack-entry { border-left: 3px solid var(--green-stack); }
 
   <h3 style="margin:1.5rem 0 1rem; font-size:1rem;">Bot Configuration</h3>
   <div class="settings-grid">
+
+    <!-- PANEL 1: Trading & Risk -->
     <div class="setting-group">
-      <h3>Trading</h3>
+      <h3>Trading & Risk</h3>
       <div class="setting-row">
         <label>Mode</label>
         <select id="set-mode"><option value="PAPER">Paper</option><option value="LIVE">Live</option></select>
       </div>
       <div id="live-unavailable" class="live-unavailable" style="display:none;">LIVE unavailable — wallet not configured</div>
       <div class="setting-row">
-        <label>Standard Size ($)</label>
-        <input type="number" id="set-lc-size" min="1" max="1000" step="1">
-      </div>
-      <div class="setting-row">
-        <label>High Conviction Size ($)</label>
-        <input type="number" id="set-hc-size" min="1" max="1000" step="1">
-      </div>
-      <div class="setting-row">
-        <label>HC Threshold</label>
-        <input type="number" id="set-hc-threshold" min="0.50" max="0.99" step="0.01">
-      </div>
-      <div class="setting-row">
         <label>Bot Enabled</label>
         <select id="set-enabled"><option value="true">Yes</option><option value="false">No</option></select>
       </div>
-    </div>
-    <div class="setting-group">
-      <h3>Risk</h3>
+      <div style="border-top:1px solid var(--border); margin:0.6rem 0 0.4rem; padding-top:0.5rem;">
+        <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Bet Size</span>
+      </div>
+      <div class="setting-row">
+        <label>Standard Size ($)</label>
+        <input type="number" id="set-std-size" min="1" max="1000" step="1">
+      </div>
+      <div id="hc-fields">
+        <div class="setting-row">
+          <label>HC Size ($)</label>
+          <input type="number" id="set-hc-size" min="1" max="1000" step="1">
+        </div>
+        <div class="setting-row">
+          <label>HC Threshold</label>
+          <input type="number" id="set-hc-threshold" min="0.50" max="0.99" step="0.01">
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border); margin:0.6rem 0 0.4rem; padding-top:0.5rem;">
+        <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Risk Limits</span>
+      </div>
       <div class="setting-row">
         <label>Max Open Positions</label>
         <input type="number" id="set-maxpos" min="1" max="50" step="1">
@@ -400,9 +415,9 @@ tr.stack-entry { border-left: 3px solid var(--green-stack); }
         <label>Cooldown (ms)</label>
         <input type="number" id="set-cooldown" min="1000" max="60000" step="1000">
       </div>
-    </div>
-    <div class="setting-group">
-      <h3>Stacking</h3>
+      <div style="border-top:1px solid var(--border); margin:0.6rem 0 0.4rem; padding-top:0.5rem;">
+        <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Stacking</span>
+      </div>
       <div class="setting-row">
         <label>Max Entries/Contract</label>
         <input type="number" id="set-max-stack" min="1" max="5" step="1">
@@ -412,33 +427,12 @@ tr.stack-entry { border-left: 3px solid var(--green-stack); }
         <input type="number" id="set-min-stack" min="5" max="500" step="5">
       </div>
     </div>
+
+    <!-- PANEL 2: Filters & Wallets -->
     <div class="setting-group">
-      <h3>Filters</h3>
-      <div class="setting-row">
-        <label>Allowed Assets</label>
-        <input type="text" id="set-assets" placeholder="BTC,ETH" style="width:150px;">
-      </div>
-      <div class="setting-row">
-        <label>Allowed Sides</label>
-        <select id="set-sides">
-          <option value="BUY">BUY only</option>
-          <option value="BUY,SELL">BUY + SELL</option>
-        </select>
-      </div>
-    </div>
-    <div class="setting-group">
-      <h3>Signal Wallets <span style="font-size:0.65rem; color:var(--text-dim); font-weight:400;">(LIVE mode: only checked wallets trigger copies)</span></h3>
-      <div id="wallet-picker" style="display:grid; grid-template-columns:1fr 1fr; gap:0.3rem 1rem; margin-bottom:0.5rem;"></div>
-      <div style="display:flex; gap:0.5rem;">
-        <button class="btn" style="font-size:0.7rem; padding:0.2rem 0.6rem;" onclick="toggleAllWallets(true)">Select All</button>
-        <button class="btn" style="font-size:0.7rem; padding:0.2rem 0.6rem;" onclick="toggleAllWallets(false)">Deselect All</button>
-      </div>
-    </div>
-    <div class="setting-group">
-      <h3>Filter Parameters</h3>
-      <div class="setting-row">
-        <label>Standard Size ($)</label>
-        <input type="number" id="set-standard-size" min="1" max="500" step="1" title="Bet size for BAL/GP bots">
+      <h3>Filters & Wallets</h3>
+      <div style="margin-bottom:0.4rem;">
+        <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Signal Filters</span>
       </div>
       <div class="setting-row">
         <label>Price Floor</label>
@@ -449,8 +443,8 @@ tr.stack-entry { border-left: 3px solid var(--green-stack); }
         <input type="number" id="set-price-ceiling" min="0.50" max="1.0" step="0.01" title="Max price (>= 1.0 = no ceiling)">
       </div>
       <div class="setting-row">
-        <label>MidEdge Threshold</label>
-        <input type="number" id="set-midedge-threshold" min="-1.0" max="0.0" step="0.01" title="midEdge must be < this value">
+        <label>MidEdge Ranges</label>
+        <input type="text" id="set-midedge-ranges" placeholder="<-0.05" style="width:180px;" title="e.g. <-0.05 or <-0.15,>0.05 or -0.20 to -0.05">
       </div>
       <div class="setting-row">
         <label>Edge vs Spot</label>
@@ -462,32 +456,69 @@ tr.stack-entry { border-left: 3px solid var(--green-stack); }
       </div>
       <div class="setting-row">
         <label>Momentum Required</label>
-        <select id="set-momentum-required"><option value="true">Yes</option><option value="false">No</option></select>
+        <select id="set-momentum"><option value="true">Yes</option><option value="false">No</option></select>
       </div>
       <div class="setting-row">
         <label>Whale Size Gate ($)</label>
         <input type="number" id="set-whale-gate" min="0" max="1000" step="1" title="Min whale usdcSize to accept">
       </div>
+      <div style="border-top:1px solid var(--border); margin:0.6rem 0 0.4rem; padding-top:0.5rem;">
+        <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Timing Windows</span>
+      </div>
       <div class="setting-row">
-        <label>Secs Ranges 5m</label>
+        <label>5min Secs Ranges</label>
         <input type="text" id="set-secs-5m" placeholder="90-200" style="width:180px;" title="e.g. 90-200 or 90-120,150-210">
       </div>
       <div class="setting-row">
-        <label>Secs Ranges 15m</label>
+        <label>15min Secs Ranges</label>
         <input type="text" id="set-secs-15m" placeholder="90-300" style="width:180px;" title="e.g. 90-300">
       </div>
+      <div style="border-top:1px solid var(--border); margin:0.6rem 0 0.4rem; padding-top:0.5rem;">
+        <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Assets & Sides</span>
+      </div>
+      <div class="setting-row">
+        <label>Allowed Assets</label>
+        <input type="text" id="set-assets" placeholder="BTC,ETH" style="width:150px;">
+      </div>
+      <div class="setting-row">
+        <label>Allowed Sides</label>
+        <select id="set-sides">
+          <option value="BUY">BUY only</option>
+          <option value="BUY,SELL">BUY + SELL</option>
+        </select>
+      </div>
+      <div style="border-top:1px solid var(--border); margin:0.6rem 0 0.4rem; padding-top:0.5rem;">
+        <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Signal Wallets</span>
+        <span style="font-size:0.6rem; color:var(--text-dim); font-weight:400; margin-left:0.3rem;">(LIVE: only checked wallets trigger copies)</span>
+      </div>
+      <div id="wallet-picker" style="display:grid; grid-template-columns:1fr 1fr; gap:0.3rem 1rem; margin-bottom:0.5rem;"></div>
+      <div style="display:flex; gap:0.5rem;">
+        <button class="btn" style="font-size:0.7rem; padding:0.2rem 0.6rem;" onclick="toggleAllWallets(true)">Select All</button>
+        <button class="btn" style="font-size:0.7rem; padding:0.2rem 0.6rem;" onclick="toggleAllWallets(false)">Deselect All</button>
+      </div>
     </div>
+
+    <!-- PANEL 3: Export & Actions -->
     <div class="setting-group">
-      <h3>Export</h3>
-      <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+      <h3>Export & Actions</h3>
+      <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1rem;">
         <button class="btn btn-gold" onclick="exportCSV('whale')">Export Whale CSV</button>
         <button class="btn btn-gold" onclick="exportCSV('bot')">Export Bot CSV</button>
         <button class="btn btn-gold" onclick="exportCSV('decisions')">Export Decisions CSV</button>
       </div>
+      <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1rem;">
+        <button class="btn btn-green" onclick="saveSettings()">Save Settings</button>
+      </div>
+      <div style="border-top:1px solid var(--border); margin:0.6rem 0 0.4rem; padding-top:0.5rem;">
+        <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Session Controls</span>
+      </div>
+      <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+        <button class="btn" style="background:#d97706; color:#fff; font-size:0.8rem;" onclick="resetSessionLossesBtn()">Reset Session Losses</button>
+        <button class="btn" style="background:#e67e22; color:#fff; font-size:0.8rem;" onclick="endSession()">End Session</button>
+        <button class="btn" style="background:#555; color:#fff; font-size:0.8rem;" onclick="resetStatsBtn()">Reset Stats</button>
+      </div>
     </div>
-  </div>
-  <div style="margin-top:1rem;">
-    <button class="btn btn-green" onclick="saveSettings()">Save Settings</button>
+
   </div>
 </div>
 
@@ -716,6 +747,39 @@ function formatSecsRanges(ranges) {
   return ranges.map(r => r[0] + '-' + r[1]).join(',');
 }
 
+// Parse midEdge ranges from text input: "<-0.05" or "<-0.15,>0.05" or "-0.20 to -0.05"
+function parseMidEdgeRanges(str) {
+  if (!str || !str.trim()) return [{ operator: 'lt', value: -0.05 }];
+  return str.split(',').map(s => s.trim()).filter(Boolean).map(part => {
+    // "between" format: "-0.20 to -0.05"
+    const betweenMatch = part.match(/^(-?[\d.]+)\s*to\s*(-?[\d.]+)$/);
+    if (betweenMatch) {
+      return { operator: 'between', value: 0, min: parseFloat(betweenMatch[1]), max: parseFloat(betweenMatch[2]) };
+    }
+    // Operator formats: "<-0.05", ">0.02", "<=-0.10", ">=0.00"
+    const opMatch = part.match(/^([<>]=?)\s*(-?[\d.]+)$/);
+    if (opMatch) {
+      const opMap = { '<': 'lt', '>': 'gt', '<=': 'lte', '>=': 'gte' };
+      return { operator: opMap[opMatch[1]] || 'lt', value: parseFloat(opMatch[2]) };
+    }
+    // Bare number: treat as "< value"
+    const num = parseFloat(part);
+    if (!isNaN(num)) return { operator: 'lt', value: num };
+    return null;
+  }).filter(Boolean);
+}
+
+function formatMidEdgeRanges(ranges) {
+  if (!Array.isArray(ranges) || ranges.length === 0) return '<-0.05';
+  const opSymbol = { lt: '<', gt: '>', lte: '<=', gte: '>=' };
+  return ranges.map(r => {
+    if (r.operator === 'between' && r.min !== undefined && r.max !== undefined) {
+      return r.min + ' to ' + r.max;
+    }
+    return (opSymbol[r.operator] || '<') + r.value;
+  }).join(',');
+}
+
 // Unified filter — reads all thresholds from effectiveSettings (broadcast by bot-server)
 function wouldPassFilter(t) {
   const s = state.effectiveSettings || state.settings;
@@ -733,8 +797,19 @@ function wouldPassFilter(t) {
   // Price ceiling — skip when >= 1.0
   const ceil = s.priceCeiling ?? 1.0;
   if (ceil < 1.0 && t.price > ceil) return false;
-  // Mid edge
-  if (t.midEdge === null || t.midEdge >= (s.midEdgeThreshold ?? -0.05)) return false;
+  // Mid edge (range-based)
+  if (t.midEdge === null) return false;
+  const midRanges = s.midEdgeRanges || [{ operator: 'lt', value: -0.05 }];
+  let midEdgeOk = false;
+  for (const r of midRanges) {
+    if (r.operator === 'lt' && t.midEdge < r.value) { midEdgeOk = true; break; }
+    if (r.operator === 'gt' && t.midEdge > r.value) { midEdgeOk = true; break; }
+    if (r.operator === 'lte' && t.midEdge <= r.value) { midEdgeOk = true; break; }
+    if (r.operator === 'gte' && t.midEdge >= r.value) { midEdgeOk = true; break; }
+    if (r.operator === 'between' && r.min !== undefined && r.max !== undefined
+        && t.midEdge >= r.min && t.midEdge < r.max) { midEdgeOk = true; break; }
+  }
+  if (!midEdgeOk) return false;
   // Momentum
   if ((s.momentumRequired !== false) && !t.momentumAligned) return false;
   // Edge vs spot
@@ -1081,30 +1156,33 @@ function saveSettings() {
     fallbackDismissed = false;
   }
 
+  // Unified sizing — Standard Size writes to BOTH lowConvictionSize and standardSize
+  const stdSize = parseFloat(document.getElementById('set-std-size').value) || 10;
+
   const settings = {
     mode: newMode,
-    highConvictionSize: parseFloat(document.getElementById('set-hc-size').value) || 30,
-    lowConvictionSize: parseFloat(document.getElementById('set-lc-size').value) || 10,
+    lowConvictionSize: stdSize,         // unified: Standard Size → both fields
+    standardSize: stdSize,              // unified: Standard Size → both fields
+    highConvictionSize: parseFloat(document.getElementById('set-hc-size').value) || 20,
     highConvictionThreshold: parseFloat(document.getElementById('set-hc-threshold').value) || 0.80,
     botEnabled: document.getElementById('set-enabled').value === 'true',
     maxOpenPositions: parseInt(document.getElementById('set-maxpos').value) || 15,
     maxExposureUSD: parseFloat(document.getElementById('set-exposure').value) || 500,
-    maxLossPerHour: parseFloat(document.getElementById('set-loss-hour').value) || 120,
-    maxLossPerSession: parseFloat(document.getElementById('set-loss-session').value) || 400,
+    maxLossPerHour: parseFloat(document.getElementById('set-loss-hour').value) || 100,
+    maxLossPerSession: parseFloat(document.getElementById('set-loss-session').value) || 200,
     maxEntriesPerContract: parseInt(document.getElementById('set-max-stack').value) || 3,
     minStackSize: parseFloat(document.getElementById('set-min-stack').value) || 25,
     cooldownMs: parseInt(document.getElementById('set-cooldown').value) || 5000,
     allowedAssets: document.getElementById('set-assets').value.split(',').map(s => s.trim().toUpperCase()).filter(Boolean),
     allowedSides: document.getElementById('set-sides').value.split(',').map(s => s.trim()),
     enabledWallets: getEnabledWalletsFromPicker(),
-    // Filter parameters (v10)
-    standardSize: parseFloat(document.getElementById('set-standard-size').value) || 10,
+    // Filter parameters (v10.2)
     priceFloor: parseFloat(document.getElementById('set-price-floor').value) || 0.50,
     priceCeiling: parseFloat(document.getElementById('set-price-ceiling').value) || 1.0,
-    midEdgeThreshold: parseFloat(document.getElementById('set-midedge-threshold').value) || -0.05,
+    midEdgeRanges: parseMidEdgeRanges(document.getElementById('set-midedge-ranges').value),
     edgeVsSpotEnabled: document.getElementById('set-edge-enabled').value === 'true',
     edgeVsSpotThreshold: parseFloat(document.getElementById('set-edge-threshold').value) || 0.0,
-    momentumRequired: document.getElementById('set-momentum-required').value === 'true',
+    momentumRequired: document.getElementById('set-momentum').value === 'true',
     whaleSizeGate: parseFloat(document.getElementById('set-whale-gate').value) || 0,
     secsRanges5m: parseSecsRanges(document.getElementById('set-secs-5m').value),
     secsRanges15m: parseSecsRanges(document.getElementById('set-secs-15m').value),
@@ -1145,36 +1223,67 @@ function resetStatsBtn() {
     .catch(e => alert('Reset failed: ' + e.message));
 }
 
-// Populate settings form when state arrives
+// Populate settings form when state arrives — with LIVE override display
 function populateSettings() {
   if (!state) return;
   const s = state.settings;
+  const eff = state.effectiveSettings || s;
+  const isLive = s.mode === 'LIVE';
+
+  // Helper: set field value, show LIVE override indicator if overridden
+  function setField(inputId, savedVal, effVal) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const overridden = isLive && effVal !== undefined && effVal !== savedVal;
+    input.value = overridden ? effVal : savedVal;
+    input.disabled = overridden;
+    // Add/remove override label
+    const labelId = inputId + '-override';
+    let label = document.getElementById(labelId);
+    if (overridden) {
+      if (!label) {
+        label = document.createElement('span');
+        label.id = labelId;
+        label.className = 'live-override-label';
+        label.textContent = '(LIVE override)';
+        input.parentElement.appendChild(label);
+      }
+    } else if (label) {
+      label.remove();
+    }
+  }
+
+  // Overridable fields — show effective value when LIVE
+  setField('set-std-size', s.lowConvictionSize || 10, eff.lowConvictionSize);
+  setField('set-hc-size', s.highConvictionSize || 20, eff.highConvictionSize);
+  setField('set-hc-threshold', s.highConvictionThreshold || 0.80, eff.highConvictionThreshold);
+  setField('set-maxpos', s.maxOpenPositions || 15, eff.maxOpenPositions);
+  setField('set-exposure', s.maxExposureUSD || 500, eff.maxExposureUSD);
+  setField('set-loss-hour', s.maxLossPerHour || 100, eff.maxLossPerHour);
+  setField('set-loss-session', s.maxLossPerSession || 200, eff.maxLossPerSession);
+  setField('set-cooldown', s.cooldownMs || 5000, eff.cooldownMs);
+  setField('set-max-stack', s.maxEntriesPerContract || 3, eff.maxEntriesPerContract);
+
+  // Non-overridable fields — set directly
   document.getElementById('set-mode').value = s.mode;
-  document.getElementById('set-hc-size').value = s.highConvictionSize || 30;
-  document.getElementById('set-lc-size').value = s.lowConvictionSize || 10;
-  document.getElementById('set-hc-threshold').value = s.highConvictionThreshold || 0.80;
   document.getElementById('set-enabled').value = s.botEnabled ? 'true' : 'false';
-  document.getElementById('set-maxpos').value = s.maxOpenPositions || 15;
-  document.getElementById('set-exposure').value = s.maxExposureUSD || 500;
-  document.getElementById('set-loss-hour').value = s.maxLossPerHour || 120;
-  document.getElementById('set-loss-session').value = s.maxLossPerSession || 400;
-  document.getElementById('set-max-stack').value = s.maxEntriesPerContract || 3;
   document.getElementById('set-min-stack').value = s.minStackSize || 25;
-  document.getElementById('set-cooldown').value = s.cooldownMs || 5000;
-  document.getElementById('set-assets').value = (s.allowedAssets || []).join(',');
-  document.getElementById('set-sides').value = (s.allowedSides || ['BUY']).join(',');
-  renderWalletPicker(s.enabledWallets || []);
-  // Filter parameters (v10)
-  document.getElementById('set-standard-size').value = s.standardSize ?? 10;
   document.getElementById('set-price-floor').value = s.priceFloor ?? 0.50;
   document.getElementById('set-price-ceiling').value = s.priceCeiling ?? 1.0;
-  document.getElementById('set-midedge-threshold').value = s.midEdgeThreshold ?? -0.05;
+  document.getElementById('set-midedge-ranges').value = formatMidEdgeRanges(s.midEdgeRanges);
   document.getElementById('set-edge-enabled').value = s.edgeVsSpotEnabled !== false ? 'true' : 'false';
   document.getElementById('set-edge-threshold').value = s.edgeVsSpotThreshold ?? 0.0;
-  document.getElementById('set-momentum-required').value = s.momentumRequired !== false ? 'true' : 'false';
+  document.getElementById('set-momentum').value = s.momentumRequired !== false ? 'true' : 'false';
   document.getElementById('set-whale-gate').value = s.whaleSizeGate ?? 0;
   document.getElementById('set-secs-5m').value = formatSecsRanges(s.secsRanges5m || [[90,200]]);
   document.getElementById('set-secs-15m').value = formatSecsRanges(s.secsRanges15m || [[90,300]]);
+  document.getElementById('set-assets').value = (s.allowedAssets || []).join(',');
+  document.getElementById('set-sides').value = (s.allowedSides || ['BUY']).join(',');
+  renderWalletPicker(s.enabledWallets || []);
+
+  // Show/hide HC fields based on bot identity
+  const isNB = state.botId === 'NEW_BEST';
+  document.getElementById('hc-fields').style.display = isNB ? '' : 'none';
 }
 
 let settingsPopulated = false;

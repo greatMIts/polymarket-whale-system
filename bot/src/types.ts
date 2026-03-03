@@ -118,6 +118,15 @@ export interface BotTrade {
   delta5m: number;               // raw 5-min asset momentum at decision time (was btcDelta5m)
 }
 
+// ─── MidEdge Range (v10.2 — range-based midEdge filter) ─────────────────────
+
+export interface MidEdgeRange {
+  operator: "lt" | "gt" | "lte" | "gte" | "between";
+  value: number;       // threshold for lt/gt/lte/gte
+  min?: number;        // for "between"
+  max?: number;        // for "between"
+}
+
 // ─── Settings (persisted) ───────────────────────────────────────────────────
 
 export interface BotSettings {
@@ -147,7 +156,7 @@ export interface BotSettings {
   standardSize: number;               // $10 default — bet size for BAL/GP
   priceFloor: number;                 // 0.50 BAL/GP, 0.70 NB
   priceCeiling: number;               // 0.85 BAL, 1.0 GP/NB (>=1.0 = no ceiling check)
-  midEdgeThreshold: number;           // -0.05
+  midEdgeRanges: MidEdgeRange[];      // replaces midEdgeThreshold — range-based
   edgeVsSpotEnabled: boolean;         // true NB/BAL, false GP
   edgeVsSpotThreshold: number;        // 0.0
   momentumRequired: boolean;          // true

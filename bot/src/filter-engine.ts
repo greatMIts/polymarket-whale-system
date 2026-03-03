@@ -7,14 +7,14 @@
  * Filter logic:
  *   BUY && BTC/ETH && duration in [5, 15] (hardcoded)
  *   && price >= floor && (ceiling >= 1.0 || price <= ceiling)
- *   && midEdge < threshold
+ *   && midEdge matches any configured range (e.g. <-0.05)
  *   && (!momentumRequired || aligned)
  *   && (!edgeEnabled || edge > threshold)
  *   && secsRanges check (ANY range match for that duration)
  *   && usdcSize >= gate
  */
 
-import type { WhaleTrade, BotSettings } from "./types";
+import type { WhaleTrade, BotSettings, MidEdgeRange } from "./types";
 import type { FilterPresetName } from "./config";
 import { BOT_ID } from "./config";
 import { isBinanceStale } from "./market-data";
@@ -43,6 +43,24 @@ function isTimingValid(secs: number, durationMin: number, s: BotSettings): boole
 }
 
 /**
+ * Check if a midEdge value falls in ANY of the configured ranges.
+ * Any range match = pass. No match = fail.
+ */
+export function matchesMidEdgeRanges(value: number, ranges: MidEdgeRange[]): boolean {
+  if (!ranges || ranges.length === 0) return false;
+  for (const r of ranges) {
+    switch (r.operator) {
+      case "lt":      if (value < r.value) return true; break;
+      case "gt":      if (value > r.value) return true; break;
+      case "lte":     if (value <= r.value) return true; break;
+      case "gte":     if (value >= r.value) return true; break;
+      case "between": if (r.min !== undefined && r.max !== undefined && value >= r.min && value < r.max) return true; break;
+    }
+  }
+  return false;
+}
+
+/**
  * Unified filter — reads ALL thresholds from settings (dashboard-controllable).
  * Hardcoded: allowed durations [5, 15], allowed sides [BUY], allowed assets [BTC, ETH].
  */
@@ -62,8 +80,9 @@ export function unifiedFilter(trade: WhaleTrade, s: BotSettings): boolean {
   // Price ceiling — skip check when ceiling >= 1.0 (effectively no ceiling)
   if (s.priceCeiling < 1.0 && trade.price > s.priceCeiling) return false;
 
-  // Mid edge signal
-  if (trade.midEdge === null || trade.midEdge >= s.midEdgeThreshold) return false;
+  // Mid edge signal (range-based)
+  if (trade.midEdge === null) return false;
+  if (!matchesMidEdgeRanges(trade.midEdge, s.midEdgeRanges)) return false;
 
   // Momentum
   if (s.momentumRequired && !trade.momentumAligned) return false;
@@ -122,7 +141,7 @@ export function evaluateTrade(trade: WhaleTrade, settings: BotSettings): FilterR
 
   if (filterPassed) {
     reasons.push(`Passed ${presetName} filter (unified)`);
-    if (trade.midEdge !== null) reasons.push(`midEdge: ${trade.midEdge.toFixed(4)}`);
+    if (trade.midEdge !== null) reasons.push(`midEdge: ${trade.midEdge.toFixed(4)} (ranges: ${JSON.stringify(settings.midEdgeRanges)})`);
     if (trade.edgeVsSpot !== null) reasons.push(`edgeVsSpot: ${trade.edgeVsSpot.toFixed(4)}`);
     reasons.push(`momentum: ${trade.momentumAligned ? "YES" : "NO"}`);
     reasons.push(`size: $${trade.usdcSize.toFixed(2)}`);
@@ -146,8 +165,8 @@ export function evaluateTrade(trade: WhaleTrade, settings: BotSettings): FilterR
     if (settings.priceCeiling < 1.0 && trade.price > settings.priceCeiling) {
       reasons.push(`price ${trade.price.toFixed(3)} > ceiling ${settings.priceCeiling}`);
     }
-    if (trade.midEdge === null || trade.midEdge >= settings.midEdgeThreshold) {
-      reasons.push(`midEdge ${trade.midEdge !== null ? trade.midEdge.toFixed(4) : "null"} >= ${settings.midEdgeThreshold} (need < ${settings.midEdgeThreshold})`);
+    if (trade.midEdge === null || !matchesMidEdgeRanges(trade.midEdge, settings.midEdgeRanges)) {
+      reasons.push(`midEdge ${trade.midEdge !== null ? trade.midEdge.toFixed(4) : "null"} outside ranges ${JSON.stringify(settings.midEdgeRanges)}`);
     }
     if (settings.momentumRequired && !trade.momentumAligned) {
       reasons.push(`Momentum NOT aligned`);

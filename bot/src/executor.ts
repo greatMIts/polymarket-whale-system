@@ -79,7 +79,7 @@ let settings: BotSettings = {
   standardSize: DEFAULT_FILTER.standardSize,
   priceFloor: DEFAULT_FILTER.priceFloor,
   priceCeiling: DEFAULT_FILTER.priceCeiling,
-  midEdgeThreshold: DEFAULT_FILTER.midEdgeThreshold,
+  midEdgeRanges: DEFAULT_FILTER.midEdgeRanges,
   edgeVsSpotEnabled: DEFAULT_FILTER.edgeVsSpotEnabled,
   edgeVsSpotThreshold: DEFAULT_FILTER.edgeVsSpotThreshold,
   momentumRequired: DEFAULT_FILTER.momentumRequired,
@@ -171,11 +171,21 @@ function loadSettings() {
         settings.enabledWallets = DEFAULT_RISK.enabledWallets;
       }
 
+      // v10.2: midEdge — single threshold → range-based migration
+      if ((settings as any).midEdgeThreshold !== undefined && !Array.isArray(settings.midEdgeRanges)) {
+        const oldThreshold = (settings as any).midEdgeThreshold;
+        settings.midEdgeRanges = [{ operator: "lt" as const, value: oldThreshold }];
+        delete (settings as any).midEdgeThreshold;
+        console.log(`[SETTINGS MIGRATION] midEdgeThreshold ${oldThreshold} → midEdgeRanges ${JSON.stringify(settings.midEdgeRanges)}`);
+      }
+      if (!Array.isArray(settings.midEdgeRanges)) {
+        settings.midEdgeRanges = DEFAULT_FILTER.midEdgeRanges;
+      }
+
       // v10: filter parameter migration — populate from per-bot defaults if missing
       if (settings.standardSize === undefined) settings.standardSize = DEFAULT_FILTER.standardSize;
       if (settings.priceFloor === undefined) settings.priceFloor = DEFAULT_FILTER.priceFloor;
       if (settings.priceCeiling === undefined) settings.priceCeiling = DEFAULT_FILTER.priceCeiling;
-      if (settings.midEdgeThreshold === undefined) settings.midEdgeThreshold = DEFAULT_FILTER.midEdgeThreshold;
       if (settings.edgeVsSpotEnabled === undefined) settings.edgeVsSpotEnabled = DEFAULT_FILTER.edgeVsSpotEnabled;
       if (settings.edgeVsSpotThreshold === undefined) settings.edgeVsSpotThreshold = DEFAULT_FILTER.edgeVsSpotThreshold;
       if (settings.momentumRequired === undefined) settings.momentumRequired = DEFAULT_FILTER.momentumRequired;
