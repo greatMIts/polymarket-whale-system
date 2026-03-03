@@ -1,0 +1,7 @@
+node_modules/
+dist/
+spy-data/events.jsonl
+spy-data/archives/
+spy-data/*.js
+spy-data/*.json
+*.log

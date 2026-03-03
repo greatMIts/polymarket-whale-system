@@ -1,0 +1,16 @@
+{
+  "name": "polymarket-whale-spy",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "npx ts-node spy-server.ts"
+  },
+  "dependencies": {
+    "@types/express": "^5.0.6",
+    "@types/ws": "^8.18.1",
+    "axios": "^1.13.5",
+    "express": "^5.2.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
+    "ws": "^8.19.0"
+  }
+}

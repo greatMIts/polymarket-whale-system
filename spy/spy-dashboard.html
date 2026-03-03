@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🕵️ Whale Spy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  --bg:       #080c0f;
+  --surface:  #0d1318;
+  --border:   #141c22;
+  --border2:  #1d2830;
+  --text:     #8fa3b0;
+  --bright:   #c8dde8;
+  --dim:      #3a5060;
+  --green:    #00e5a0;
+  --red:      #ff4757;
+  --orange:   #ff9f43;
+  --blue:     #54a0ff;
+  --yellow:   #ffd32a;
+  --purple:   #a855f7;
+  --buy-col:  #00e5a0;
+  --sell-col: #ff9f43;
+  --up-col:   #54a0ff;
+  --down-col: #ff4757;
+  /* Wallet accent colors */
+  --w0: #00e5a0;
+  --w1: #54a0ff;
+  --w2: #ff9f43;
+  --w3: #a855f7;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── HEADER ──────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--surface);
+}
+
+.header-brand {
+  padding: 12px 20px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.brand-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--bright);
+  letter-spacing: -0.5px;
+}
+.brand-sub {
+  font-size: 9px;
+  color: var(--dim);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.header-stat {
+  padding: 10px 18px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hs-label { font-size: 8px; color: var(--dim); letter-spacing: 1.5px; text-transform: uppercase; }
+.hs-value { font-size: 15px; font-weight: 700; color: var(--bright); font-family: 'Space Mono', monospace; }
+.hs-sub   { font-size: 8px; color: var(--dim); }
+
+.btc-up   { color: var(--green) !important; }
+.btc-down { color: var(--red) !important; }
+.btc-flat { color: var(--text) !important; }
+
+.header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+}
+
+.live-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(0,229,160,0.4); }
+  50%       { opacity: 0.7; box-shadow: 0 0 0 6px rgba(0,229,160,0); }
+}
+
+.export-btn {
+  font-family: 'Space Mono', monospace;
+  font-size: 9px;
+  padding: 5px 12px;
+  border-radius: 3px;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  transition: all 0.15s;
+  text-decoration: none;
+}
+.export-btn:hover { color: var(--bright); border-color: var(--dim); }
+
+/* ── WALLET TABS ─────────────────────────────────────────── */
+.wallet-bar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+.wallet-tab {
+  padding: 8px 16px;
+  font-size: 9px;
+  font-family: 'Space Mono', monospace;
+  letter-spacing: 0.5px;
+  color: var(--dim);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  border-right: 1px solid var(--border);
+  transition: all 0.15s;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.wallet-tab:hover { color: var(--text); background: rgba(255,255,255,0.02); }
+.wallet-tab.active {
+  color: var(--bright);
+  border-bottom-color: var(--bright);
+  background: rgba(255,255,255,0.03);
+}
+.wallet-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.wallet-tab .trade-count {
+  font-size: 8px;
+  color: var(--dim);
+  background: var(--border);
+  padding: 1px 5px;
+  border-radius: 8px;
+}
+
+/* ── BODY LAYOUT ─────────────────────────────────────────── */
+.body {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  grid-template-rows: 1fr;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── LEFT: MAIN AREA ──────────────────────────────────────── */
+.main-area {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+}
+
+/* ── CHART STRIP ─────────────────────────────────────────── */
+.chart-strip {
+  height: 140px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  background: var(--surface);
+}
+
+.chart-label {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  font-size: 8px;
+  color: var(--dim);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  z-index: 2;
+}
+
+canvas#btcChart {
+  width: 100%;
+  height: 100%;
+}
+
+/* ── TRADE FEED ───────────────────────────────────────────── */
+.feed-area {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.feed-header {
+  display: grid;
+  grid-template-columns: 50px 70px 42px 42px 1fr 60px 70px 54px 70px 60px;
+  gap: 0;
+  padding: 7px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 8px;
+  color: var(--dim);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.feed-rows {
+  overflow-y: auto;
+  flex: 1;
+}
+.feed-rows::-webkit-scrollbar { width: 3px; }
+.feed-rows::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+.trade-row {
+  display: grid;
+  grid-template-columns: 50px 70px 42px 42px 1fr 60px 70px 54px 70px 60px;
+  gap: 0;
+  padding: 6px 14px;
+  border-bottom: 1px solid rgba(20,28,34,0.8);
+  align-items: center;
+  transition: background 0.1s;
+  animation: rowIn 0.25s ease;
+}
+@keyframes rowIn {
+  from { opacity: 0; background: rgba(0,229,160,0.04); }
+  to   { opacity: 1; background: transparent; }
+}
+.trade-row:hover { background: rgba(255,255,255,0.02); }
+
+.trade-row > div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 8px;
+}
+
+.tr-wallet   { font-size: 9px; font-weight: 700; }
+.tr-time     { color: var(--dim); font-size: 9px; }
+.tr-side     { font-weight: 700; font-size: 10px; }
+.tr-side.buy  { color: var(--buy-col); }
+.tr-side.sell { color: var(--sell-col); }
+.tr-outcome   { font-size: 9px; font-weight: 700; }
+.tr-outcome.up   { color: var(--up-col); }
+.tr-outcome.down { color: var(--down-col); }
+.tr-market   { color: var(--text); font-size: 9px; }
+.tr-price    { text-align: right; color: var(--bright); }
+.tr-btc      { text-align: right; font-size: 9px; }
+.tr-delta    { text-align: right; font-size: 9px; }
+.tr-edge     { text-align: right; font-size: 9px; font-weight: 700; }
+.tr-timing   { text-align: right; font-size: 9px; color: var(--dim); }
+
+.edge-pos { color: var(--green); }
+.edge-neg { color: var(--red); }
+.delta-up { color: var(--green); }
+.delta-dn { color: var(--red); }
+
+/* ── RIGHT PANEL ─────────────────────────────────────────── */
+.right-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+/* Orderbook */
+.ob-panel {
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.ob-title {
+  font-size: 8px;
+  color: var(--dim);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.ob-contract {
+  font-size: 9px;
+  color: var(--text);
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+.ob-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.ob-side {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px;
+}
+.ob-side-label {
+  font-size: 8px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.ob-side-label.up   { color: var(--up-col); }
+.ob-side-label.down { color: var(--down-col); }
+.ob-price-row { display: flex; justify-content: space-between; font-size: 10px; padding: 2px 0; }
+.ob-ask { color: var(--red); }
+.ob-bid { color: var(--green); }
+.ob-mid { color: var(--bright); font-weight: 700; }
+.ob-spread { color: var(--dim); font-size: 9px; }
+
+.ob-timer {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 9px;
+}
+.ob-timer-label { color: var(--dim); }
+.ob-timer-bar {
+  flex: 1;
+  height: 3px;
+  background: var(--border2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.ob-timer-fill {
+  height: 100%;
+  background: var(--green);
+  border-radius: 2px;
+  transition: width 0.5s linear;
+}
+.ob-timer-val { color: var(--bright); min-width: 28px; text-align: right; }
+
+/* Pattern panel */
+.pattern-panel {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.pattern-title {
+  padding: 12px 14px 8px;
+  font-size: 8px;
+  color: var(--dim);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.pattern-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 8px;
+}
+.pattern-list::-webkit-scrollbar { width: 3px; }
+.pattern-list::-webkit-scrollbar-thumb { background: var(--border2); }
+
+.pattern-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 9px 10px;
+  margin-bottom: 6px;
+  animation: cardIn 0.3s ease;
+}
+@keyframes cardIn {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.pc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+}
+.pc-name {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.pc-name.MOMENTUM_FOLLOW { color: var(--blue); }
+.pc-name.LAG_ARBITRAGE   { color: var(--green); }
+.pc-name.LATE_ENTRY      { color: var(--orange); }
+.pc-name.EARLY_ENTRY     { color: var(--yellow); }
+.pc-name.QUICK_SCALP     { color: var(--green); }
+
+.pc-conf {
+  font-size: 8px;
+  color: var(--dim);
+}
+.pc-desc {
+  font-size: 9px;
+  color: var(--text);
+  line-height: 1.5;
+}
+.pc-time {
+  font-size: 8px;
+  color: var(--dim);
+  margin-top: 4px;
+}
+
+/* Pattern summary donut */
+.pattern-summary {
+  padding: 12px 14px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.ps-title { font-size: 8px; color: var(--dim); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px; }
+.ps-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; font-size: 9px; }
+.ps-name { color: var(--text); }
+.ps-count { font-weight: 700; }
+.ps-count.MOMENTUM_FOLLOW { color: var(--blue); }
+.ps-count.LAG_ARBITRAGE   { color: var(--green); }
+.ps-count.LATE_ENTRY      { color: var(--orange); }
+.ps-count.EARLY_ENTRY     { color: var(--yellow); }
+.ps-count.QUICK_SCALP     { color: var(--green); }
+</style>
+</head>
+
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-brand">
+    <div class="brand-title">🕵️ Whale Spy</div>
+    <div class="brand-sub">Multi-Wallet Tracker</div>
+  </div>
+
+  <div class="header-stat">
+    <div class="hs-label">BTC Price</div>
+    <div class="hs-value" id="h-btc">—</div>
+    <div class="hs-sub" id="h-btc-delta">—</div>
+  </div>
+
+  <div class="header-stat">
+    <div class="hs-label">BTC 30s Δ</div>
+    <div class="hs-value" id="h-delta30">—</div>
+    <div class="hs-sub" id="h-direction">—</div>
+  </div>
+
+  <div class="header-stat">
+    <div class="hs-label">Whale Trades</div>
+    <div class="hs-value" id="h-total">0</div>
+    <div class="hs-sub" id="h-buysell">— buy / — sell</div>
+  </div>
+
+  <div class="header-stat">
+    <div class="hs-label">Avg Buy Price</div>
+    <div class="hs-value" id="h-avg-buy">—</div>
+    <div class="hs-sub" id="h-avg-sell-label">avg sell: —</div>
+  </div>
+
+  <div class="header-stat">
+    <div class="hs-label">Avg Edge (BTC)</div>
+    <div class="hs-value" id="h-edge" style="color:var(--green)">—</div>
+    <div class="hs-sub">fair_val − trade_price</div>
+  </div>
+
+  <div class="header-stat">
+    <div class="hs-label">Patterns Found</div>
+    <div class="hs-value" id="h-patterns" style="color:var(--yellow)">0</div>
+    <div class="hs-sub">auto-detected</div>
+  </div>
+
+  <div class="header-right">
+    <div class="live-dot"></div>
+    <span style="font-size:9px;color:var(--dim)">LIVE</span>
+    <a href="/api/export.csv" class="export-btn">↓ Export CSV</a>
+  </div>
+</div>
+
+<!-- WALLET TABS -->
+<div class="wallet-bar" id="walletBar">
+  <div class="wallet-tab active" data-wallet="ALL">
+    <span>ALL</span>
+    <span class="trade-count" id="cnt-all">0</span>
+  </div>
+</div>
+
+<!-- BODY -->
+<div class="body">
+
+  <!-- MAIN LEFT -->
+  <div class="main-area">
+
+    <!-- BTC PRICE CHART with whale markers -->
+    <div class="chart-strip">
+      <div class="chart-label">BTC/USDT · Binance · last 10 min + whale trades</div>
+      <canvas id="btcChart"></canvas>
+    </div>
+
+    <!-- TRADE FEED -->
+    <div class="feed-area">
+      <div class="feed-header">
+        <span>Wallet</span>
+        <span>Time</span>
+        <span>Side</span>
+        <span>Dir</span>
+        <span>Market</span>
+        <span style="text-align:right">Poly Price</span>
+        <span style="text-align:right">BTC Price</span>
+        <span style="text-align:right">BTC 30s Δ</span>
+        <span style="text-align:right">Edge vs BTC</span>
+        <span style="text-align:right">Remaining</span>
+      </div>
+      <div class="feed-rows" id="feedRows">
+        <div style="padding:20px;color:var(--dim);text-align:center;font-size:10px;">
+          Connecting to spy server…<br>
+          <span style="font-size:9px;color:var(--border2);margin-top:8px;display:block">
+            Make sure spy-server.ts is running on port 3333
+          </span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right-panel">
+
+    <!-- ORDER BOOK -->
+    <div class="ob-panel">
+      <div class="ob-title">Polymarket · Active Contract</div>
+      <div class="ob-contract" id="ob-contract">Searching for active contract…</div>
+
+      <div class="ob-grid">
+        <div class="ob-side">
+          <div class="ob-side-label up">↑ Up Token</div>
+          <div class="ob-price-row"><span class="ob-ask">Ask</span><span id="up-ask">—</span></div>
+          <div class="ob-price-row"><span class="ob-bid">Bid</span><span id="up-bid">—</span></div>
+          <div class="ob-price-row"><span class="ob-spread">Spread</span><span id="up-spread" style="color:var(--dim)">—</span></div>
+        </div>
+        <div class="ob-side">
+          <div class="ob-side-label down">↓ Down Token</div>
+          <div class="ob-price-row"><span class="ob-ask">Ask</span><span id="dn-ask">—</span></div>
+          <div class="ob-price-row"><span class="ob-bid">Bid</span><span id="dn-bid">—</span></div>
+          <div class="ob-price-row"><span class="ob-spread">Spread</span><span id="dn-spread" style="color:var(--dim)">—</span></div>
+        </div>
+      </div>
+
+      <div class="ob-timer">
+        <span class="ob-timer-label">Contract</span>
+        <div class="ob-timer-bar">
+          <div class="ob-timer-fill" id="ob-timer-fill" style="width:0%"></div>
+        </div>
+        <span class="ob-timer-val" id="ob-timer-val">—</span>
+      </div>
+    </div>
+
+    <!-- PATTERN FEED -->
+    <div class="pattern-panel">
+      <div class="pattern-title">Auto-Detected Patterns</div>
+      <div class="pattern-list" id="patternList">
+        <div style="padding:12px;color:var(--dim);font-size:9px">
+          Patterns appear automatically as whale trades are detected and cross-referenced with BTC price…
+        </div>
+      </div>
+
+      <!-- Pattern summary counts -->
+      <div class="pattern-summary">
+        <div class="ps-title">Pattern Tally</div>
+        <div class="ps-row">
+          <span class="ps-name">Lag Arbitrage</span>
+          <span class="ps-count LAG_ARBITRAGE" id="cnt-lag">0</span>
+        </div>
+        <div class="ps-row">
+          <span class="ps-name">Momentum Follow</span>
+          <span class="ps-count MOMENTUM_FOLLOW" id="cnt-mom">0</span>
+        </div>
+        <div class="ps-row">
+          <span class="ps-name">Quick Scalp</span>
+          <span class="ps-count QUICK_SCALP" id="cnt-scalp">0</span>
+        </div>
+        <div class="ps-row">
+          <span class="ps-name">Late Entry</span>
+          <span class="ps-count LATE_ENTRY" id="cnt-late">0</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ─── WALLET COLORS & STATE ──────────────────────────────────────────────────
+
+const WALLET_COLORS = ['#00e5a0', '#54a0ff', '#ff9f43', '#a855f7', '#f472b6', '#38bdf8', '#facc15', '#f87171'];
+let walletMeta = [];  // populated from server
+let activeFilter = 'ALL';
+
+function getWalletColor(label) {
+  const idx = walletMeta.findIndex(w => w.label === label);
+  return WALLET_COLORS[idx >= 0 ? idx : 0] || '#8fa3b0';
+}
+
+function isMonitorWallet(label) {
+  const w = walletMeta.find(w => w.label === label);
+  return w && w.monitorOnly;
+}
+
+function buildWalletTabs(wallets) {
+  walletMeta = wallets || [];
+  const bar = document.getElementById('walletBar');
+  // Keep the ALL tab, remove old dynamic tabs
+  const allTab = bar.querySelector('[data-wallet="ALL"]');
+  bar.innerHTML = '';
+  bar.appendChild(allTab);
+
+  for (let i = 0; i < walletMeta.length; i++) {
+    const w = walletMeta[i];
+    const tab = document.createElement('div');
+    tab.className = 'wallet-tab';
+    tab.dataset.wallet = w.label;
+    const monitorBadge = w.monitorOnly ? ' <span style="font-size:0.6rem;background:#facc15;color:#000;padding:1px 4px;border-radius:3px;font-weight:700;vertical-align:middle;">MON</span>' : '';
+    tab.innerHTML = `
+      <span class="wallet-dot" style="background:${WALLET_COLORS[i]}"></span>
+      <span>${w.label}${monitorBadge}</span>
+      <span class="trade-count" id="cnt-${w.label}">0</span>
+    `;
+    tab.addEventListener('click', () => setActiveWallet(w.label));
+    bar.appendChild(tab);
+  }
+
+  // Re-attach ALL click
+  allTab.addEventListener('click', () => setActiveWallet('ALL'));
+}
+
+function setActiveWallet(label) {
+  activeFilter = label;
+  document.querySelectorAll('.wallet-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.wallet === label);
+  });
+  // Re-render feed with filter
+  if (lastTrades) updateFeed(lastTrades);
+}
+
+// ─── CHART ───────────────────────────────────────────────────────────────────
+
+const canvas = document.getElementById('btcChart');
+const ctx    = canvas.getContext('2d');
+let btcHistory = [];
+let whaleTrades = [];
+
+function resizeCanvas() {
+  canvas.width  = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+function drawChart() {
+  if (!btcHistory.length) return;
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const prices = btcHistory.map(p => p.price);
+  const minP   = Math.min(...prices) * 0.9998;
+  const maxP   = Math.max(...prices) * 1.0002;
+  const range  = maxP - minP;
+
+  const now   = Date.now();
+  const minTs = btcHistory[0]?.ts || now;
+  const maxTs = now;
+  const timeRange = maxTs - minTs || 1;
+
+  const xOf = ts => ((ts - minTs) / timeRange) * W;
+  const yOf = p  => H - ((p - minP) / range) * (H - 20) - 4;
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(29,40,48,0.8)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 4; i++) {
+    const y = (H / 4) * i;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    const priceAtLine = maxP - (range / 4) * i;
+    ctx.fillStyle = '#3a5060';
+    ctx.font = '9px Space Mono';
+    ctx.fillText('$' + priceAtLine.toFixed(0), 4, y - 3);
+  }
+
+  // BTC price line
+  if (btcHistory.length > 1) {
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, 'rgba(0,229,160,0.15)');
+    grad.addColorStop(1, 'rgba(0,229,160,0)');
+
+    ctx.beginPath();
+    ctx.moveTo(xOf(btcHistory[0].ts), yOf(btcHistory[0].price));
+    for (let i = 1; i < btcHistory.length; i++) {
+      ctx.lineTo(xOf(btcHistory[i].ts), yOf(btcHistory[i].price));
+    }
+    // Fill area
+    ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Line
+    ctx.beginPath();
+    ctx.moveTo(xOf(btcHistory[0].ts), yOf(btcHistory[0].price));
+    for (let i = 1; i < btcHistory.length; i++) {
+      ctx.lineTo(xOf(btcHistory[i].ts), yOf(btcHistory[i].price));
+    }
+    ctx.strokeStyle = 'rgba(0,229,160,0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // Whale trade markers — color by wallet
+  const visibleTrades = whaleTrades.filter(t => {
+    if (t.ts < minTs) return false;
+    if (activeFilter !== 'ALL' && t.walletLabel !== activeFilter) return false;
+    return true;
+  });
+
+  for (const trade of visibleTrades) {
+    const x = xOf(trade.ts);
+    if (x < 0 || x > W) continue;
+
+    const isBuy  = trade.side === 'BUY';
+    const isUp   = (trade.outcome||'').toLowerCase().includes('up');
+    const wColor = getWalletColor(trade.walletLabel);
+    const yPos   = yOf(trade.spotPrice ?? trade.btcPriceAtTrade ?? prices[0]);
+
+    // Vertical dashed line
+    ctx.setLineDash([2, 3]);
+    ctx.strokeStyle = wColor + '44';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Dot at BTC price level
+    ctx.beginPath();
+    ctx.arc(x, yPos, 4, 0, Math.PI * 2);
+    ctx.fillStyle = wColor;
+    ctx.fill();
+
+    // Label
+    ctx.fillStyle = wColor;
+    ctx.font = '8px Space Mono';
+    const label = (trade.walletLabel||'??').slice(2,4) + (isBuy ? 'B' : 'S') + (isUp ? '↑' : '↓');
+    ctx.fillText(label, x + 5, yPos - 5);
+  }
+}
+
+setInterval(drawChart, 500);
+
+// ─── WEBSOCKET ────────────────────────────────────────────────────────────────
+
+let ws;
+let reconnectTimer;
+let lastTrades = [];
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}`);
+
+  ws.onopen = () => {
+    console.log('Connected to spy server');
+    clearTimeout(reconnectTimer);
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.type === 'state') updateAll(data);
+    } catch {}
+  };
+
+  ws.onclose = () => {
+    reconnectTimer = setTimeout(connect, 2000);
+  };
+}
+
+// ─── STATE UPDATE ─────────────────────────────────────────────────────────────
+
+let patterns = [];
+let walletsBuilt = false;
+
+function updateAll(data) {
+  btcHistory  = data.btcHistory || [];
+  whaleTrades = data.recentTrades || [];
+  lastTrades  = whaleTrades;
+
+  // Build wallet tabs once
+  if (!walletsBuilt && data.wallets && data.wallets.length > 0) {
+    buildWalletTabs(data.wallets);
+    walletsBuilt = true;
+  }
+
+  updateHeader(data);
+  updateOrderBook(data);
+  updateFeed(whaleTrades);
+  updatePatterns(data.recentEvents || []);
+  // Use server-authoritative counts (from full dataset, not just the WS window)
+  updateWalletCounts(data.walletCounts || {}, data.totalTrades || whaleTrades.length);
+}
+
+function updateWalletCounts(serverCounts, totalTrades) {
+  // Update tab badges using server's full counts
+  const allEl = document.getElementById('cnt-all');
+  if (allEl) allEl.textContent = totalTrades;
+  for (const w of walletMeta) {
+    const el = document.getElementById(`cnt-${w.label}`);
+    if (el) el.textContent = serverCounts[w.label] || 0;
+  }
+}
+
+function updateHeader(data) {
+  const btc   = data.btcPrice || 0;
+  const d30   = data.delta30s ?? data.btcDelta30s ?? 0;
+  const dir   = data.priceDirection ?? data.btcDirection ?? 'FLAT';
+  const stats = data.stats || {};
+
+  document.getElementById('h-btc').textContent      = btc ? '$' + btc.toLocaleString('en', {minimumFractionDigits:0,maximumFractionDigits:0}) : '—';
+  document.getElementById('h-btc').className        = `hs-value btc-${dir.toLowerCase()}`;
+  const d5m = data.delta5m ?? data.btcDelta5m ?? 0;
+  document.getElementById('h-btc-delta').textContent = `5m: ${d5m >= 0 ? '+' : ''}${d5m.toFixed(3)}%`;
+
+  const d30El = document.getElementById('h-delta30');
+  d30El.textContent = (d30 >= 0 ? '+' : '') + d30.toFixed(4) + '%';
+  d30El.className   = `hs-value btc-${dir.toLowerCase()}`;
+  document.getElementById('h-direction').textContent = dir;
+
+  document.getElementById('h-total').textContent       = (stats.totalWhaleTrades || 0).toLocaleString();
+  document.getElementById('h-buysell').textContent     = `${stats.buyCount||0} buy / ${stats.sellCount||0} sell`;
+  document.getElementById('h-avg-buy').textContent     = stats.avgBuyPrice  ? stats.avgBuyPrice.toFixed(4)  : '—';
+  document.getElementById('h-avg-sell-label').textContent = `avg sell: ${stats.avgSellPrice ? stats.avgSellPrice.toFixed(4) : '—'}`;
+  document.getElementById('h-edge').textContent        = stats.avgEdge ? (stats.avgEdge >= 0 ? '+' : '') + stats.avgEdge.toFixed(4) : '—';
+  document.getElementById('h-patterns').textContent   = stats.patternsDetected || 0;
+}
+
+function updateOrderBook(data) {
+  const ob  = data.orderBook  || {};
+  const ac  = data.activeContract || {};
+
+  document.getElementById('ob-contract').textContent = ac.title || ob.contractTitle || 'No active contract';
+
+  const fmt = v => v ? v.toFixed(4) : '—';
+  document.getElementById('up-ask').textContent = fmt(ob.upAsk);
+  document.getElementById('up-bid').textContent = fmt(ob.upBid);
+  document.getElementById('dn-ask').textContent = fmt(ob.downAsk);
+  document.getElementById('dn-bid').textContent = fmt(ob.downBid);
+
+  const upSpread = ob.upAsk && ob.upBid ? (ob.upAsk - ob.upBid).toFixed(4) : '—';
+  const dnSpread = ob.downAsk && ob.downBid ? (ob.downAsk - ob.downBid).toFixed(4) : '—';
+  document.getElementById('up-spread').textContent = upSpread;
+  document.getElementById('dn-spread').textContent = dnSpread;
+
+  // Timer bar
+  const startTs = ac.startTs || ob.startTs || 0;
+  const endTs   = ac.endTs   || ob.endTs   || 0;
+  if (startTs && endTs) {
+    const now      = Date.now();
+    const total    = endTs - startTs;
+    const elapsed  = now - startTs;
+    const pct      = Math.min(100, Math.max(0, (elapsed / total) * 100));
+    const secsLeft = Math.max(0, (endTs - now) / 1000);
+
+    document.getElementById('ob-timer-fill').style.width = pct + '%';
+    document.getElementById('ob-timer-fill').style.background =
+      pct > 80 ? 'var(--orange)' : pct > 95 ? 'var(--red)' : 'var(--green)';
+    document.getElementById('ob-timer-val').textContent =
+      secsLeft < 60 ? secsLeft.toFixed(0) + 's' : (secsLeft / 60).toFixed(1) + 'm';
+  }
+}
+
+function updateFeed(trades) {
+  if (!trades.length) return;
+
+  // Apply wallet filter
+  const filtered = activeFilter === 'ALL'
+    ? trades
+    : trades.filter(t => t.walletLabel === activeFilter);
+
+  const rows = filtered.slice(0, 150).map(t => {
+    const ts  = new Date(t.ts);
+    const time = ts.toLocaleTimeString('en-IE', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    const side = (t.side||'').toUpperCase();
+    const isUp = (t.outcome||'').toLowerCase().includes('up');
+    const dir  = isUp ? 'Up' : 'Down';
+    const wColor = getWalletColor(t.walletLabel);
+
+    const d30  = t.delta30s ?? t.btcDelta30s ?? 0;
+    const edge = t.edgeVsSpot ?? t.edgeVsBtc;
+    const hasEdge = edge !== null && edge !== undefined;
+
+    const secsLeft = t.secondsRemainingInContract;
+    const remaining = secsLeft >= 0 ? (secsLeft < 60 ? `${secsLeft.toFixed(0)}s` : `${(secsLeft/60).toFixed(1)}m`) : '—';
+
+    return `
+      <div class="trade-row">
+        <div class="tr-wallet" style="color:${wColor}" title="${t.wallet||''}">${t.walletLabel||'??'}${isMonitorWallet(t.walletLabel) ? ' <span style="font-size:0.5rem;background:#facc15;color:#000;padding:0 3px;border-radius:2px;font-weight:700;">M</span>' : ''}</div>
+        <div class="tr-time">${time}</div>
+        <div class="tr-side ${side.toLowerCase()}">${side}</div>
+        <div class="tr-outcome ${isUp ? 'up' : 'down'}">${dir}</div>
+        <div class="tr-market" title="${t.title||''}">${(t.title||'').slice(0,28)||t.conditionId?.slice(0,14)}</div>
+        <div class="tr-price">${t.price?.toFixed(4)||'—'}</div>
+        <div class="tr-btc">${(t.spotPrice ?? t.btcPriceAtTrade) ? '$'+(t.spotPrice ?? t.btcPriceAtTrade).toLocaleString('en',{maximumFractionDigits:0}) : '—'}</div>
+        <div class="tr-delta ${d30 >= 0 ? 'delta-up' : 'delta-dn'}">${d30 >= 0 ? '+' : ''}${d30.toFixed(3)}%</div>
+        <div class="tr-edge ${hasEdge ? (edge >= 0 ? 'edge-pos' : 'edge-neg') : ''}">${hasEdge ? (edge >= 0 ? '+' : '') + edge.toFixed(4) : '—'}</div>
+        <div class="tr-timing">${remaining}</div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('feedRows').innerHTML = rows ||
+    '<div style="padding:20px;color:var(--dim);text-align:center;font-size:10px;">No trades for this wallet yet</div>';
+}
+
+function updatePatterns(events) {
+  const newPatterns = events.filter(e => e.type === 'PATTERN_DETECTED');
+  if (!newPatterns.length) return;
+
+  // Pattern cards
+  const cards = newPatterns.slice(-30).reverse().map(p => `
+    <div class="pattern-card">
+      <div class="pc-header">
+        <span class="pc-name ${p.pattern}">${p.pattern.replace(/_/g,' ')}</span>
+        <span class="pc-conf">${(p.confidence * 100).toFixed(0)}% conf</span>
+      </div>
+      <div class="pc-desc">${p.description}</div>
+      <div class="pc-time">${new Date(p.ts).toLocaleTimeString()}</div>
+    </div>`).join('');
+
+  document.getElementById('patternList').innerHTML = cards ||
+    '<div style="padding:12px;color:var(--dim);font-size:9px">No patterns detected yet</div>';
+
+  // Tally
+  const counts = { LAG_ARBITRAGE: 0, MOMENTUM_FOLLOW: 0, QUICK_SCALP: 0, LATE_ENTRY: 0 };
+  for (const p of newPatterns) {
+    if (counts[p.pattern] !== undefined) counts[p.pattern]++;
+  }
+  document.getElementById('cnt-lag').textContent   = counts.LAG_ARBITRAGE;
+  document.getElementById('cnt-mom').textContent   = counts.MOMENTUM_FOLLOW;
+  document.getElementById('cnt-scalp').textContent = counts.QUICK_SCALP;
+  document.getElementById('cnt-late').textContent  = counts.LATE_ENTRY;
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+
+connect();
+</script>
+</body>
+</html>

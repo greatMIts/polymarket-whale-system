@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.log
+.env
+
+# Spy data (runtime)
+spy/spy-data/events.jsonl
+spy/spy-data/archives/
+spy/spy-data/*.js
+spy/spy-data/*.json
+
+# Bot data (runtime)
+bot/data/
+bot/dist/
