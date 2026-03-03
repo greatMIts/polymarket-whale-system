@@ -1116,7 +1116,8 @@ function renderWalletPicker(enabledList) {
   if (!container) return;
   const wallets = state?.availableWallets || [
     {prefix:'0x63ce'},{prefix:'0x37c9'},{prefix:'0x0ea5'},{prefix:'0x1d00'},
-    {prefix:'0x1979'},{prefix:'0x571c'},{prefix:'0xf696'},{prefix:'0xa9ae'}
+    {prefix:'0x1979'},{prefix:'0x571c'},{prefix:'0xf696'},{prefix:'0xa9ae'},
+    {prefix:'0x2d8b'}
   ];
   container.innerHTML = wallets.map((w, i) => {
     const checked = enabledList.includes(w.prefix) ? 'checked' : '';

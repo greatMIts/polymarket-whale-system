@@ -22,6 +22,7 @@ export const WALLETS = [
   { address: "0x571c285a83eba5322b5f916ba681669dc368a61f", label: "0x571c" },
   { address: "0xf6963d4cdbb6f26d753bda303e9513132afb1b7d", label: "0xf696" },
   { address: "0xa9ae84ee529dbec0c6634b08cd97d3f13f7d74f5", label: "0xa9ae" },
+  { address: "0x2d8b401d2f0e6937afebf18e19e11ca568a5260a", label: "0x2d8b" },
 ];
 
 // All wallets available for the dashboard wallet picker (includes labels for UI)
@@ -34,10 +35,11 @@ export const AVAILABLE_WALLETS = [
   { prefix: "0x571c", label: "0x571c" },
   { prefix: "0xf696", label: "0xf696" },
   { prefix: "0xa9ae", label: "0xa9ae" },
+  { prefix: "0x2d8b", label: "0x2d8b" },
 ];
 
 // Default enabled wallets: Tier 1 + Tier 2 (all bots same default)
-export const DEFAULT_ENABLED_WALLETS = ["0x63ce", "0x37c9", "0x0ea5", "0x1d00", "0x1979"];
+export const DEFAULT_ENABLED_WALLETS = ["0x63ce", "0x37c9", "0x0ea5", "0x1d00", "0x1979", "0x2d8b"];
 
 // ─── Asset Mapping ──────────────────────────────────────────────────────────
 

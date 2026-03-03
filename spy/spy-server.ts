@@ -27,6 +27,7 @@ const WALLETS = [
   { address: "0x571c285a83eba5322b5f916ba681669dc368a61f", label: "0x571c", monitorOnly: false },
   { address: "0x0ea574f3204c5c9c0cdead90392ea0990f4d17e4", label: "0x0ea5", monitorOnly: false },
   { address: "0xa9ae84ee529dbec0c6634b08cd97d3f13f7d74f5", label: "0xa9ae", monitorOnly: true },
+  { address: "0x2d8b401d2f0e6937afebf18e19e11ca568a5260a", label: "0x2d8b", monitorOnly: false },
 ];
 
 const CONFIG = {
