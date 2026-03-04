@@ -22,7 +22,7 @@ import { checkRisk, recordCooldown, clearOldCooldowns } from "./risk-manager";
 import { evaluateTrade, filterStats, unifiedFilter } from "./filter-engine";
 import { onWhaleTrade, getConcurrentWhales } from "./whale-watcher";
 import { trackAppend, startRotationTimer, type RotationConfig } from "./file-rotation";
-import { getClobClient, isClobReady, reconnectClobClient, Side, OrderType } from "./clob-client";
+import { getClobClient, isClobReady, Side, OrderType } from "./clob-client";
 import { logLiveEvent } from "./live-events";
 
 // ─── STATE ──────────────────────────────────────────────────────────────────
@@ -97,12 +97,21 @@ export function getSettings(): BotSettings {
   return { ...settings };
 }
 
-export function updateSettings(partial: Partial<BotSettings>) {
+export function updateSettings(partial: Partial<BotSettings>): { rejected?: string } {
   // Handle mode toggle to LIVE
   if (partial.mode === "LIVE" && settings.mode !== "LIVE") {
     if (!isClobReady()) {
-      logEvent("LIVE mode rejected — wallet not configured", "risk");
-      delete partial.mode; // Remove mode change, keep other settings
+      const reason = "CLOB client not initialized — wallet credentials missing or derivation failed. Restart the bot to retry.";
+      logEvent("LIVE mode rejected — CLOB not ready", "risk");
+      delete partial.mode;
+      // Apply remaining settings, then return rejection
+      Object.assign(settings, partial);
+      settings.activeFilter = BOT_ID;
+      if ((settings as any).excludedWallets !== undefined) delete (settings as any).excludedWallets;
+      if (!settings.enabledWallets) settings.enabledWallets = DEFAULT_RISK.enabledWallets;
+      saveSettings();
+      logEvent(`Settings updated (LIVE rejected): ${JSON.stringify(partial)}`);
+      return { rejected: reason };
     } else {
       logLiveEvent({ event: "MODE_SWITCH", from: "PAPER", to: "LIVE" });
       const eff = getEffectiveSettings();
@@ -116,7 +125,6 @@ export function updateSettings(partial: Partial<BotSettings>) {
       autoFallbackTs = null;
       consecutiveFailures = 0;
       consecutiveBalanceErrors = 0;
-      clobReconnecting = false;
     }
   } else if (partial.mode === "PAPER" && settings.mode === "LIVE") {
     logLiveEvent({ event: "MODE_SWITCH", from: "LIVE", to: "PAPER" });
@@ -135,6 +143,7 @@ export function updateSettings(partial: Partial<BotSettings>) {
   }
   saveSettings();
   logEvent(`Settings updated: ${JSON.stringify(partial)}`);
+  return {};
 }
 
 function saveSettings() {
@@ -295,11 +304,8 @@ let lastOrderTs: number | null = null;
 let lastOrderStatus: string | null = null;
 
 // ─── BALANCE ERROR CIRCUIT BREAKER ──────────────────────────────────────────
-// Consecutive balance errors trigger CLOB reconnect, then auto-fallback if reconnect fails
 let consecutiveBalanceErrors = 0;
-let clobReconnecting = false;
-const BALANCE_ERROR_RECONNECT_THRESHOLD = 3;  // reconnect after 3 consecutive balance errors
-const BALANCE_ERROR_FALLBACK_THRESHOLD = 6;   // fallback to PAPER after 6 (reconnect didn't help)
+const MAX_BALANCE_ERRORS = 3; // after 3 consecutive balance rejections → auto-fallback
 
 function incrementFailureCount() {
   consecutiveFailures++;
@@ -402,7 +408,6 @@ export function getLiveState() {
     clobReady: isClobReady(),
     consecutiveFailures,
     consecutiveBalanceErrors,
-    clobReconnecting,
     autoFallbackReason,
     autoFallbackTs,
     liveOrdersPlaced,
@@ -649,7 +654,10 @@ async function executeCopyTrade(whaleTrade: WhaleTrade, filterPreset: FilterPres
 
         if (isBalanceError) {
           consecutiveBalanceErrors++;
-          console.warn(`⏭ SKIP: insufficient balance for $${sizeUsdc} order (${consecutiveBalanceErrors} consecutive) — ${error.message}`);
+          liveOrdersFailed++;
+          lastOrderTs = Date.now();
+          lastOrderStatus = "BALANCE_ERROR";
+          console.warn(`⏭ SKIP: insufficient balance for $${sizeUsdc} order (${consecutiveBalanceErrors}/${MAX_BALANCE_ERRORS} consecutive) — ${error.message}`);
           logLiveEvent({
             event: "ORDER_SKIPPED",
             reason: "INSUFFICIENT_BALANCE",
@@ -659,33 +667,9 @@ async function executeCopyTrade(whaleTrade: WhaleTrade, filterPreset: FilterPres
             consecutiveBalanceErrors,
             error: error.message,
           });
-
-          // After threshold consecutive balance errors, try CLOB reconnect
-          if (consecutiveBalanceErrors >= BALANCE_ERROR_RECONNECT_THRESHOLD && !clobReconnecting) {
-            clobReconnecting = true;
-            console.warn(`⚠ ${consecutiveBalanceErrors} consecutive balance errors — attempting CLOB reconnect...`);
-            logEvent(`⚠ CLOB reconnect triggered after ${consecutiveBalanceErrors} balance errors`, "risk");
-
-            // Fire-and-forget: reconnect in background, don't block the trade pipeline
-            reconnectClobClient().then((ok) => {
-              clobReconnecting = false;
-              if (ok) {
-                consecutiveBalanceErrors = 0;
-                logEvent("✅ CLOB reconnected — balance errors may resolve", "info");
-              } else {
-                logEvent("❌ CLOB reconnect failed — will fallback if errors continue", "risk");
-              }
-            }).catch(() => {
-              clobReconnecting = false;
-            });
+          if (consecutiveBalanceErrors >= MAX_BALANCE_ERRORS) {
+            triggerAutoFallback(`${consecutiveBalanceErrors} consecutive balance rejections — wallet likely empty or funds locked in open positions`);
           }
-
-          // After higher threshold, give up and fallback to PAPER
-          if (consecutiveBalanceErrors >= BALANCE_ERROR_FALLBACK_THRESHOLD) {
-            triggerAutoFallback(`${consecutiveBalanceErrors} consecutive balance/allowance errors — possible stale CLOB session`);
-            consecutiveBalanceErrors = 0;
-          }
-
           return;
         }
 

@@ -588,6 +588,19 @@ function connectWs() {
       return;
     }
 
+    if (msg.type === 'settings_updated') {
+      if (msg.rejected) {
+        alert('⚠ LIVE mode rejected:\n\n' + msg.rejected);
+        console.error('[settings] LIVE rejected:', msg.rejected);
+      }
+      // Immediately apply returned settings to UI
+      if (state) {
+        state.settings = msg.settings;
+        render();
+      }
+      return;
+    }
+
     if (msg.type === 'state') {
       state = msg;
       render();
@@ -1202,6 +1215,20 @@ function saveSettings() {
   };
   if (ws && ws.readyState === 1) {
     ws.send(JSON.stringify({ type: 'update_settings', settings }));
+  } else {
+    console.warn('[settings] WS not connected, falling back to HTTP POST');
+    fetch('/api/settings?token=' + authToken, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d._rejected) {
+          alert('⚠ LIVE mode rejected:\n\n' + d._rejected);
+        }
+      })
+      .catch(function(e) { alert('Failed to save settings: ' + e.message); });
   }
 }
 

@@ -27,39 +27,49 @@ export async function initClobClient(): Promise<boolean> {
     return false;
   }
 
-  try {
-    const signer = new Wallet(privateKey);
+  const MAX_RETRIES = 3;
+  const BACKOFF_BASE_MS = 3000;
 
-    // Derive API credentials from wallet signature
-    const tempClient = new ClobClient("https://clob.polymarket.com", 137, signer);
-    const apiCreds = await tempClient.createOrDeriveApiKey();
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const signer = new Wallet(privateKey);
+      const tempClient = new ClobClient("https://clob.polymarket.com", 137, signer);
+      const apiCreds = await tempClient.createOrDeriveApiKey();
 
-    // signatureType = 1 for POLY_PROXY (Magic Link wallet)
-    clobClient = new ClobClient(
-      "https://clob.polymarket.com",
-      137,
-      signer,
-      apiCreds,
-      1,       // POLY_PROXY — Magic Link wallet
-      funder   // Polymarket deposit/proxy address
-    );
+      clobClient = new ClobClient(
+        "https://clob.polymarket.com",
+        137,
+        signer,
+        apiCreds,
+        1,       // POLY_PROXY — Magic Link wallet
+        funder
+      );
 
-    clobReady = true;
-    console.log(`CLOB client initialized — signer: ${signer.address}, funder: ${funder}, signatureType: 1 (POLY_PROXY)`);
+      clobReady = true;
+      console.log(`CLOB client initialized (attempt ${attempt}/${MAX_RETRIES}) — signer: ${signer.address}, funder: ${funder}, signatureType: 1 (POLY_PROXY)`);
 
-    logLiveEvent({
-      event: "CLOB_INITIALIZED",
-      signerAddress: signer.address,
-      funderAddress: funder,
-      signatureType: 1,
-    });
+      logLiveEvent({
+        event: "CLOB_INITIALIZED",
+        signerAddress: signer.address,
+        funderAddress: funder,
+        signatureType: 1,
+        attempt,
+      });
 
-    return true;
-  } catch (error: any) {
-    console.error("CLOB client initialization FAILED:", error.message);
-    clobReady = false;
-    return false;
+      return true;
+    } catch (error: any) {
+      console.error(`CLOB client init attempt ${attempt}/${MAX_RETRIES} FAILED: ${error.message}`);
+      if (attempt < MAX_RETRIES) {
+        const delay = BACKOFF_BASE_MS * attempt;
+        console.log(`  Retrying in ${delay / 1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
   }
+
+  console.error(`CLOB client initialization FAILED after ${MAX_RETRIES} attempts — LIVE mode unavailable until restart`);
+  clobReady = false;
+  return false;
 }
 
 export function getClobClient(): ClobClient | null {

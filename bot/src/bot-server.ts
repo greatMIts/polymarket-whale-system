@@ -200,8 +200,12 @@ wss.on("connection", (ws) => {
 
       // Handle settings updates from dashboard
       if (msg.type === "update_settings") {
-        updateSettings(msg.settings);
-        ws.send(JSON.stringify({ type: "settings_updated", settings: getSettings() }));
+        const result = updateSettings(msg.settings);
+        ws.send(JSON.stringify({
+          type: "settings_updated",
+          settings: getSettings(),
+          rejected: result.rejected || null,
+        }));
       }
     } catch {}
   });
@@ -212,8 +216,8 @@ wss.on("connection", (ws) => {
 // Settings
 app.get("/api/settings", (_req, res) => res.json(getSettings()));
 app.post("/api/settings", (req, res) => {
-  updateSettings(req.body);
-  res.json(getSettings());
+  const result = updateSettings(req.body);
+  res.json({ ...getSettings(), _rejected: result.rejected || null });
 });
 
 // Bot stats
