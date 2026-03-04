@@ -33,7 +33,20 @@ export async function init(): Promise<void> {
     try {
       const signer = new Wallet(privateKey);
       const tempClient = new ClobClient("https://clob.polymarket.com", 137, signer);
-      const apiCreds = await tempClient.createOrDeriveApiKey();
+
+      // Use deriveApiKey() first to avoid noisy 400 error from createOrDeriveApiKey().
+      // The library's createOrDeriveApiKey() tries CREATE first (logs a 400 error if key
+      // already exists), then falls back to DERIVE. By calling derive directly we skip
+      // the noisy error entirely in the common case.
+      let apiCreds;
+      try {
+        apiCreds = await tempClient.deriveApiKey();
+        console.log("[CLOB] API key derived successfully");
+      } catch {
+        console.log("[CLOB] deriveApiKey failed, trying createApiKey...");
+        apiCreds = await tempClient.createApiKey();
+        console.log("[CLOB] API key created successfully");
+      }
 
       clobClient = new ClobClient(
         "https://clob.polymarket.com",
@@ -55,8 +68,10 @@ export async function init(): Promise<void> {
         attempt: attempt + 1,
       });
 
-      // Query initial balance (non-blocking)
-      getBalance().catch(() => {});
+      // Query initial balance and log it
+      getBalance()
+        .then(bal => console.log(`[CLOB] Initial balance: $${bal.toFixed(2)}`))
+        .catch(() => console.warn("[CLOB] Initial balance query failed"));
       return;
     } catch (error: any) {
       console.error(`[CLOB] Init attempt ${attempt + 1}/3 FAILED: ${error.message}`);
@@ -113,7 +128,13 @@ export async function reconnect(): Promise<void> {
   try {
     const signer = new Wallet(privateKey);
     const tempClient = new ClobClient("https://clob.polymarket.com", 137, signer);
-    const apiCreds = await tempClient.createOrDeriveApiKey();
+
+    let apiCreds;
+    try {
+      apiCreds = await tempClient.deriveApiKey();
+    } catch {
+      apiCreds = await tempClient.createApiKey();
+    }
 
     clobClient = new ClobClient(
       "https://clob.polymarket.com",
@@ -130,7 +151,9 @@ export async function reconnect(): Promise<void> {
     console.log("[CLOB] Reconnected successfully");
     logLiveEvent({ event: "CLOB_RECONNECTED", signerAddress: signer.address, funderAddress: funder });
 
-    getBalance().catch(() => {});
+    getBalance()
+      .then(bal => console.log(`[CLOB] Balance after reconnect: $${bal.toFixed(2)}`))
+      .catch(() => console.warn("[CLOB] Balance query failed after reconnect"));
   } catch (error: any) {
     console.error("[CLOB] Reconnect FAILED:", error.message);
     clobReady = false;
