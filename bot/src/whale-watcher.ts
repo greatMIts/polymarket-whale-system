@@ -25,6 +25,7 @@ import type { WhaleTrade } from "./types";
 
 const seenTxHashes = new Set<string>();
 const handlers: ((trade: WhaleTrade) => void)[] = [];
+const seededWallets = new Set<string>();
 
 // V7.5: Capped FIFO (max 200), newest last
 const recentTrades: WhaleTrade[] = [];
@@ -70,6 +71,27 @@ async function pollWhale(walletAddress: string, walletLabel: string) {
     }
     if (newAssets.size > 0) {
       await Promise.allSettled([...newAssets].map(a => getContractForAsset(a)));
+    }
+
+    // ── First poll per wallet: seed seenTxHashes only, don't emit ──
+    // On boot, each wallet returns ~50 historical trades (many on expired contracts
+    // with empty books). Emitting them floods the trader with "book stale" rejects.
+    // Only emit truly new trades detected on 2nd+ poll.
+    const isFirstPoll = !seededWallets.has(walletAddress);
+    if (isFirstPoll) {
+      seededWallets.add(walletAddress);
+      let seeded = 0;
+      for (const t of trades) {
+        const txHash = t.transactionHash || `${t.timestamp}_${t.asset}`;
+        if (!seenTxHashes.has(txHash)) {
+          seenTxHashes.add(txHash);
+          seeded++;
+        }
+      }
+      if (seeded > 0) {
+        console.log(`[${walletLabel}] seeded ${seeded} historical tx hashes`);
+      }
+      return;
     }
 
     // Pre-compute volatility per symbol

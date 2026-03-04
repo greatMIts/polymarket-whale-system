@@ -52,7 +52,11 @@ export async function executeCopyTrade(whaleTrade: WhaleTrade): Promise<BotTrade
     book = marketData.getBook(whaleTrade.asset);
     bookAge = Date.now() - book.lastUpdateTs;
     if (bookAge > 15_000) {
-      logger.logEvent(`REJECT: book stale (${bookAge}ms)`, 'risk');
+      // Only log if book was once populated (genuinely went stale)
+      // Skip silently if never populated (expired contract / no market)
+      if (book.lastUpdateTs > 0) {
+        logger.logEvent(`REJECT: book stale (${bookAge}ms) ${whaleTrade.assetLabel}`, 'risk');
+      }
       return null;
     }
   }
