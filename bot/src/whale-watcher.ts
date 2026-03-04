@@ -97,8 +97,9 @@ async function pollWhale(walletAddress: string, walletLabel: string) {
       const secsRemaining = endTs ? (endTs - now) / 1000 : -1;
 
       // ── V7.5 Duration gate: only emit 5m and 15m contracts ──
-      const durationMatch = (contract?.title || "").match(/(\d+)\s*min/i);
-      const durationMin = durationMatch ? parseInt(durationMatch[1]) : null;
+      // Use contract.durationMs (parsed from time range in title by market-data.ts)
+      // NOT regex on title — titles use "6:00PM-6:05PM" format, not "5 min"
+      const durationMin = contract?.durationMs ? Math.round(contract.durationMs / 60000) : null;
       if (durationMin !== 5 && durationMin !== 15) continue;
 
       const contractDuration: '5m' | '15m' = durationMin === 5 ? '5m' : '15m';
