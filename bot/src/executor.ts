@@ -107,7 +107,7 @@ export function updateSettings(partial: Partial<BotSettings>) {
       logLiveEvent({ event: "MODE_SWITCH", from: "PAPER", to: "LIVE" });
       const eff = getEffectiveSettings();
       logEvent(
-        `LIVE RISK LIMITS ACTIVE: maxExposure=$${eff.maxExposureUSD}, maxLoss/hr=$${eff.maxLossPerHour}, maxLoss/session=$${eff.maxLossPerSession}, flat $${eff.lowConvictionSize} sizing, max ${eff.maxEntriesPerContract} entries/contract`,
+        `LIVE RISK LIMITS ACTIVE: maxExposure=$${eff.maxExposureUSD}, maxLoss/hr=$${eff.maxLossPerHour}, maxLoss/session=$${eff.maxLossPerSession}, LC=$${eff.lowConvictionSize}/HC=$${eff.highConvictionSize}@${eff.highConvictionThreshold} sizing, max ${eff.maxEntriesPerContract} entries/contract`,
         "info"
       );
       // Reset per-contract tracking on mode switch to LIVE
@@ -211,9 +211,6 @@ function loadSettings() {
 
       // BAL-specific migrations
       if (BOT_ID === "BALANCED") {
-        // Force flat $10 sizing — no HC
-        settings.lowConvictionSize = 10;
-        settings.highConvictionSize = 10; // effectively disables HC
         // Force maxEntriesPerContract = 1 — no stacking for LIVE safety
         if (settings.maxEntriesPerContract !== 1) {
           console.log(`[SETTINGS] BAL maxEntriesPerContract ${settings.maxEntriesPerContract} → 1 (no stacking for LIVE safety)`);
@@ -221,11 +218,8 @@ function loadSettings() {
         settings.maxEntriesPerContract = 1;
       }
 
-      // GP-specific migrations — OG GOLD: flat $10, no stacking, conservative risk
+      // GP-specific migrations — OG GOLD: no stacking, conservative risk
       if (BOT_ID === "GOLD_PLUS") {
-        // Force flat $10 sizing — no HC (OG GOLD was simple)
-        settings.lowConvictionSize = 10;
-        settings.highConvictionSize = 10;
         // Force maxEntriesPerContract = 1 — no stacking
         if (settings.maxEntriesPerContract !== 1) {
           console.log(`[SETTINGS] GP maxEntriesPerContract ${settings.maxEntriesPerContract} → 1 (OG GOLD: no stacking)`);
@@ -252,10 +246,7 @@ const LIVE_OVERRIDES: Partial<BotSettings> = {
   maxExposureUSD: 500,
   maxLossPerHour: 100,
   maxLossPerSession: 200,
-  lowConvictionSize: 10,          // flat $10 — no HC in LIVE
-  highConvictionSize: 10,         // SAME as standard — HC disabled
-  highConvictionThreshold: 1.0,   // nothing qualifies
-  maxEntriesPerContract: 3,       // backtest validated: max 3 = +44% PnL over max 2
+  maxEntriesPerContract: 3,
   cooldownMs: 5000,
 };
 
