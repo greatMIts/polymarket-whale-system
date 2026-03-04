@@ -69,3 +69,57 @@ export function getClobClient(): ClobClient | null {
 export function isClobReady(): boolean {
   return clobReady;
 }
+
+/**
+ * Re-derive API credentials and rebuild the CLOB client.
+ * Called when consecutive balance errors suggest a stale session.
+ * Returns true if reconnection succeeded.
+ */
+export async function reconnectClobClient(): Promise<boolean> {
+  const privateKey = process.env.POLYMARKET_PRIVATE_KEY;
+  const funder = process.env.POLYMARKET_FUNDER;
+
+  if (!privateKey || !funder) {
+    console.error("[CLOB] reconnect failed — env vars missing");
+    return false;
+  }
+
+  console.log("[CLOB] Reconnecting — re-deriving API credentials...");
+  clobReady = false; // mark unavailable during reconnect
+
+  try {
+    const signer = new Wallet(privateKey);
+    const tempClient = new ClobClient("https://clob.polymarket.com", 137, signer);
+    const apiCreds = await tempClient.createOrDeriveApiKey();
+
+    clobClient = new ClobClient(
+      "https://clob.polymarket.com",
+      137,
+      signer,
+      apiCreds,
+      1,       // POLY_PROXY
+      funder
+    );
+
+    clobReady = true;
+    console.log("[CLOB] Reconnected successfully — new API credentials derived");
+
+    logLiveEvent({
+      event: "CLOB_RECONNECTED",
+      signerAddress: signer.address,
+      funderAddress: funder,
+    });
+
+    return true;
+  } catch (error: any) {
+    console.error("[CLOB] Reconnect FAILED:", error.message);
+    clobReady = false;
+
+    logLiveEvent({
+      event: "CLOB_RECONNECT_FAILED",
+      error: error.message,
+    });
+
+    return false;
+  }
+}

@@ -22,7 +22,7 @@ import { checkRisk, recordCooldown, clearOldCooldowns } from "./risk-manager";
 import { evaluateTrade, filterStats, unifiedFilter } from "./filter-engine";
 import { onWhaleTrade, getConcurrentWhales } from "./whale-watcher";
 import { trackAppend, startRotationTimer, type RotationConfig } from "./file-rotation";
-import { getClobClient, isClobReady, Side, OrderType } from "./clob-client";
+import { getClobClient, isClobReady, reconnectClobClient, Side, OrderType } from "./clob-client";
 import { logLiveEvent } from "./live-events";
 
 // ─── STATE ──────────────────────────────────────────────────────────────────
@@ -115,6 +115,8 @@ export function updateSettings(partial: Partial<BotSettings>) {
       autoFallbackReason = null;
       autoFallbackTs = null;
       consecutiveFailures = 0;
+      consecutiveBalanceErrors = 0;
+      clobReconnecting = false;
     }
   } else if (partial.mode === "PAPER" && settings.mode === "LIVE") {
     logLiveEvent({ event: "MODE_SWITCH", from: "LIVE", to: "PAPER" });
@@ -292,6 +294,13 @@ let liveOrdersFailed = 0;
 let lastOrderTs: number | null = null;
 let lastOrderStatus: string | null = null;
 
+// ─── BALANCE ERROR CIRCUIT BREAKER ──────────────────────────────────────────
+// Consecutive balance errors trigger CLOB reconnect, then auto-fallback if reconnect fails
+let consecutiveBalanceErrors = 0;
+let clobReconnecting = false;
+const BALANCE_ERROR_RECONNECT_THRESHOLD = 3;  // reconnect after 3 consecutive balance errors
+const BALANCE_ERROR_FALLBACK_THRESHOLD = 6;   // fallback to PAPER after 6 (reconnect didn't help)
+
 function incrementFailureCount() {
   consecutiveFailures++;
   liveOrdersFailed++;
@@ -304,6 +313,7 @@ function incrementFailureCount() {
 
 function resetFailureCount() {
   consecutiveFailures = 0;
+  consecutiveBalanceErrors = 0;
   liveOrdersPlaced++;
   lastOrderTs = Date.now();
   lastOrderStatus = "PLACED";
@@ -391,6 +401,8 @@ export function getLiveState() {
   return {
     clobReady: isClobReady(),
     consecutiveFailures,
+    consecutiveBalanceErrors,
+    clobReconnecting,
     autoFallbackReason,
     autoFallbackTs,
     liveOrdersPlaced,
@@ -636,16 +648,45 @@ async function executeCopyTrade(whaleTrade: WhaleTrade, filterPreset: FilterPres
           || errMsg.includes("crosses") || errMsg.includes("cross the book");
 
         if (isBalanceError) {
-          console.warn(`⏭ SKIP: insufficient balance for $${sizeUsdc} order — ${error.message}`);
+          consecutiveBalanceErrors++;
+          console.warn(`⏭ SKIP: insufficient balance for $${sizeUsdc} order (${consecutiveBalanceErrors} consecutive) — ${error.message}`);
           logLiveEvent({
             event: "ORDER_SKIPPED",
             reason: "INSUFFICIENT_BALANCE",
             tokenID: whaleTrade.asset,
             conditionId: whaleTrade.conditionId,
             requestedSize: sizeUsdc,
+            consecutiveBalanceErrors,
             error: error.message,
           });
-          return; // skip gracefully, no failure count
+
+          // After threshold consecutive balance errors, try CLOB reconnect
+          if (consecutiveBalanceErrors >= BALANCE_ERROR_RECONNECT_THRESHOLD && !clobReconnecting) {
+            clobReconnecting = true;
+            console.warn(`⚠ ${consecutiveBalanceErrors} consecutive balance errors — attempting CLOB reconnect...`);
+            logEvent(`⚠ CLOB reconnect triggered after ${consecutiveBalanceErrors} balance errors`, "risk");
+
+            // Fire-and-forget: reconnect in background, don't block the trade pipeline
+            reconnectClobClient().then((ok) => {
+              clobReconnecting = false;
+              if (ok) {
+                consecutiveBalanceErrors = 0;
+                logEvent("✅ CLOB reconnected — balance errors may resolve", "info");
+              } else {
+                logEvent("❌ CLOB reconnect failed — will fallback if errors continue", "risk");
+              }
+            }).catch(() => {
+              clobReconnecting = false;
+            });
+          }
+
+          // After higher threshold, give up and fallback to PAPER
+          if (consecutiveBalanceErrors >= BALANCE_ERROR_FALLBACK_THRESHOLD) {
+            triggerAutoFallback(`${consecutiveBalanceErrors} consecutive balance/allowance errors — possible stale CLOB session`);
+            consecutiveBalanceErrors = 0;
+          }
+
+          return;
         }
 
         if (isFokRejection) {
