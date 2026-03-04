@@ -850,6 +850,49 @@ export function resolvePositions() {
   let newResolutions = 0;
 
   for (const pos of open) {
+    // --- FALLBACK: force-resolve stale positions using CLOB book price ---
+    const contract = marketState.contractCache.get(pos.conditionId);
+    const endTs = contract?.endTs || 0;
+    const minutesPastEnd = endTs > 0 ? (Date.now() - endTs) / 60_000 : 0;
+
+    if (minutesPastEnd > 10 && !resolutionCache.has(pos.conditionId)) {
+      // Contract ended 10+ min ago with no Gamma resolution — use CLOB book price
+      const book = marketState.tokenBook.get(pos.asset);
+      if (book) {
+        const mid = (book.bid + book.ask) / 2;
+        if (mid > 0.85) {
+          resolutionCache.set(pos.conditionId, pos.outcome);  // this outcome won
+          logEvent(`🔄 Force-resolved ${pos.title.slice(0, 40)} via book price (mid=${mid.toFixed(3)})`, "resolution");
+        } else if (mid < 0.15) {
+          // This outcome lost — set resolution to the opposite
+          const otherOutcome = pos.outcome.toLowerCase() === "up" ? "Down" : "Up";
+          resolutionCache.set(pos.conditionId, otherOutcome);
+          logEvent(`🔄 Force-resolved ${pos.title.slice(0, 40)} via book price (mid=${mid.toFixed(3)})`, "resolution");
+        } else if (minutesPastEnd > 60) {
+          // 1 hour past end, book price inconclusive — mark as expired
+          resolutionCache.set(pos.conditionId, "__EXPIRED__");
+          logEvent(`⏰ Force-expired ${pos.title.slice(0, 40)} — ended ${Math.round(minutesPastEnd)}min ago, book mid=${mid.toFixed(3)}`, "resolution");
+        }
+      } else if (minutesPastEnd > 60) {
+        // 1 hour past end, no book data at all — mark as expired
+        resolutionCache.set(pos.conditionId, "__EXPIRED__");
+        logEvent(`⏰ Force-expired ${pos.title.slice(0, 40)} — ended ${Math.round(minutesPastEnd)}min ago, no book data`, "resolution");
+      }
+    }
+
+    // Handle __EXPIRED__ positions (force-closed with 0 PnL)
+    if (resolutionCache.get(pos.conditionId) === "__EXPIRED__") {
+      pos.resolution = "EXPIRED";
+      pos.won = null;
+      pos.pnl = 0;
+      pos.exitPrice = null;
+      pos.resolvedAt = Date.now();
+      pos.status = "EXPIRED";
+      newResolutions++;
+      logEvent(`⏰ EXPIRED: ${pos.title.slice(0, 40)} — contract ended ${Math.round(minutesPastEnd)}min ago`, "resolution");
+      continue;
+    }
+
     const resolution = resolutionCache.get(pos.conditionId);
     if (resolution === undefined || resolution === null) continue;
     // Skip positions with in-flight take profit SELL orders

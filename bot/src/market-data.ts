@@ -795,7 +795,9 @@ export async function checkResolutions() {
           newResolutions++;
         }
       }
-    } catch {}
+    } catch (err: any) {
+      console.log(`[resolution] Gamma query failed for ${condId.slice(0, 16)}: ${err.message || err}`);
+    }
   }
 
   if (newResolutions > 0) {
