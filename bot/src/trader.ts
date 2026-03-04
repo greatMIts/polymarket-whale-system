@@ -42,11 +42,19 @@ export async function executeCopyTrade(whaleTrade: WhaleTrade): Promise<BotTrade
   if (isInactiveHour(s.inactiveHoursUTC)) return null;
 
   // ── Step 1: Fetch LIVE market data ──
-  const book = marketData.getBook(whaleTrade.asset);
-  const bookAge = Date.now() - book.lastUpdateTs;
+  let book = marketData.getBook(whaleTrade.asset);
+  let bookAge = Date.now() - book.lastUpdateTs;
+
+  // If book is stale, try REST fallback before rejecting
+  // (WS subscription may not have delivered first snapshot yet)
   if (bookAge > 15_000) {
-    logger.logEvent(`REJECT: book stale (${bookAge}ms)`, 'risk');
-    return null;
+    await marketData.fetchBookFromRest(whaleTrade.asset);
+    book = marketData.getBook(whaleTrade.asset);
+    bookAge = Date.now() - book.lastUpdateTs;
+    if (bookAge > 15_000) {
+      logger.logEvent(`REJECT: book stale (${bookAge}ms)`, 'risk');
+      return null;
+    }
   }
   const clobMid = (book.bestBid + book.bestAsk) / 2;
   const binanceSpot = marketData.getBinancePrice(whaleTrade.assetLabel);
