@@ -197,7 +197,7 @@ async function pollWhale(walletAddress: string, walletLabel: string) {
       };
 
       allWhaleTrades.unshift(whaleTrade);
-      if (allWhaleTrades.length > 10_000) allWhaleTrades.length = 10_000;
+      if (allWhaleTrades.length > 5000) allWhaleTrades.length = 5000;
       newCount++;
 
       // Emit to all listeners (filter engine, persistence, etc.)

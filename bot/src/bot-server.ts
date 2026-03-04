@@ -38,7 +38,6 @@ import {
   startPolling,
   getRecentWhaleTrades,
   getTotalWhaleTradeCount,
-  allWhaleTrades,
 } from "./whale-watcher";
 import { filterStats } from "./filter-engine";
 import { resetSessionLosses } from "./risk-manager";
@@ -274,47 +273,6 @@ app.get("/api/system", (_req, res) => {
 });
 
 // ─── CSV EXPORT ─────────────────────────────────────────────────────────────
-
-// Export whale trades
-app.get("/api/export-whale.csv", (_req, res) => {
-  const trades = allWhaleTrades;
-  const header = "ts,wallet,walletLabel,side,outcome,price,usdcSize,shares,assetLabel,binanceSymbol," +
-    "spotPrice,delta30s,delta5m,priceDirection,edgeVsSpot,polyMid,midEdge,momentumAligned," +
-    "secsRemaining,contractDuration,resolution,won,pnl,conditionId,title,asset,whaleTxHash\n";
-
-  const rows = trades.map(t => {
-    const resolution = resolutionCache.get(t.conditionId) || null;
-    let won: boolean | null = null;
-    let pnl: number | null = null;
-    // Only compute won/pnl for BUY trades — SELL won/pnl is misleading (BUY perspective formula)
-    if (resolution && t.side === "BUY") {
-      won = t.outcome.toLowerCase() === resolution.toLowerCase();
-      pnl = won ? (1 - t.price) * t.shares : -t.price * t.shares;
-    }
-    return [
-      t.tsIso, t.wallet, t.walletLabel, t.side, t.outcome,
-      t.price, t.usdcSize, t.shares, t.assetLabel, t.binanceSymbol,
-      t.spotPrice ?? (t as any).btcPriceAtTrade, ((t.delta30s ?? (t as any).btcDelta30s) || 0).toFixed(4), ((t.delta5m ?? (t as any).btcDelta5m) || 0).toFixed(4), t.priceDirection ?? (t as any).btcDirection,
-      (t.edgeVsSpot ?? (t as any).edgeVsBtc) !== null ? ((t.edgeVsSpot ?? (t as any).edgeVsBtc) || 0).toFixed(4) : "",
-      t.polyMid > 0 ? t.polyMid.toFixed(4) : "",
-      t.midEdge !== null ? t.midEdge.toFixed(4) : "",
-      t.momentumAligned ? "TRUE" : "FALSE",
-      t.secondsRemainingInContract >= 0 ? t.secondsRemainingInContract.toFixed(0) : "",
-      t.contractDurationMinutes || "",
-      resolution || "",
-      won !== null ? (won ? "TRUE" : "FALSE") : "",
-      pnl !== null ? pnl.toFixed(4) : "",
-      t.conditionId,
-      `"${(t.title || "").replace(/"/g, '""')}"`,
-      t.asset,
-      t.txHash || "",
-    ].join(",");
-  }).join("\n");
-
-  res.setHeader("Content-Type", "text/csv");
-  res.setHeader("Content-Disposition", `attachment; filename=${FILE_PREFIX}_whale_trades.csv`);
-  res.send(header + rows);
-});
 
 // Export bot trades (with all new columns)
 function generateBotTradesCsv(): string {
