@@ -1090,6 +1090,25 @@ function renderLivePanel() {
     } else {
       lastEl.textContent = '\u2014';
     }
+    // Wallet balance display (only when we have data)
+    if (ls.walletBalance && ls.walletBalance.balance !== null) {
+      var bal = ls.walletBalance;
+      var ageSec = Math.round((Date.now() - bal.lastChecked) / 1000);
+      var ageStr = ageSec < 60 ? ageSec + 's ago' : Math.round(ageSec / 60) + 'm ago';
+      var balColor = bal.balance < 20 ? '#ef4444' : '#22c55e';
+      var balEl = document.getElementById('live-balance-display');
+      if (!balEl) {
+        balEl = document.createElement('div');
+        balEl.id = 'live-balance-display';
+        balEl.style.cssText = 'font-size:0.8rem; margin-top:4px; padding:4px 8px; border-radius:4px; background:var(--bg-card,#1a1a2e);';
+        var livePanel = document.querySelector('.live-stats') || liveBar;
+        if (livePanel) livePanel.appendChild(balEl);
+      }
+      balEl.innerHTML = '<span style="color:' + balColor + '; font-weight:600;">$' +
+        bal.balance.toFixed(2) + '</span>' +
+        ' <span style="color:var(--text-dim,#888); font-size:0.7rem;">(' + ageStr + ')</span>' +
+        (ls.clobReconnecting ? ' <span style="color:#f59e0b;">reconnecting...</span>' : '');
+    }
   } else {
     liveBar.classList.remove('visible');
   }

@@ -22,7 +22,7 @@ import { checkRisk, recordCooldown, clearOldCooldowns } from "./risk-manager";
 import { evaluateTrade, filterStats, unifiedFilter } from "./filter-engine";
 import { onWhaleTrade, getConcurrentWhales } from "./whale-watcher";
 import { trackAppend, startRotationTimer, type RotationConfig } from "./file-rotation";
-import { getClobClient, isClobReady, Side, OrderType } from "./clob-client";
+import { getClobClient, isClobReady, reconnectClobClient, queryBalance, getCachedBalance, hasEnoughBalance, Side, OrderType } from "./clob-client";
 import { logLiveEvent } from "./live-events";
 
 // ─── STATE ──────────────────────────────────────────────────────────────────
@@ -125,6 +125,7 @@ export function updateSettings(partial: Partial<BotSettings>): { rejected?: stri
       autoFallbackTs = null;
       consecutiveFailures = 0;
       consecutiveBalanceErrors = 0;
+      clobReconnecting = false;
     }
   } else if (partial.mode === "PAPER" && settings.mode === "LIVE") {
     logLiveEvent({ event: "MODE_SWITCH", from: "LIVE", to: "PAPER" });
@@ -305,6 +306,7 @@ let lastOrderStatus: string | null = null;
 
 // ─── BALANCE ERROR CIRCUIT BREAKER ──────────────────────────────────────────
 let consecutiveBalanceErrors = 0;
+let clobReconnecting = false;
 const MAX_BALANCE_ERRORS = 3; // after 3 consecutive balance rejections → auto-fallback
 
 function incrementFailureCount() {
@@ -323,6 +325,8 @@ function resetFailureCount() {
   liveOrdersPlaced++;
   lastOrderTs = Date.now();
   lastOrderStatus = "PLACED";
+  // Refresh cached balance after successful trade (non-blocking)
+  queryBalance().catch(() => {});
 }
 
 function triggerAutoFallback(reason: string) {
@@ -408,6 +412,8 @@ export function getLiveState() {
     clobReady: isClobReady(),
     consecutiveFailures,
     consecutiveBalanceErrors,
+    clobReconnecting,
+    walletBalance: getCachedBalance(),
     autoFallbackReason,
     autoFallbackTs,
     liveOrdersPlaced,
@@ -602,6 +608,30 @@ async function executeCopyTrade(whaleTrade: WhaleTrade, filterPreset: FilterPres
         const contractInfo = marketState.assetToContract.get(tokenID);
         const negRisk = contractInfo?.negRisk ?? false;
 
+        // ── PRE-TRADE BALANCE GATE ──────────────────────────────────────
+        // Skip order locally if cached balance is confidently too low.
+        if (!hasEnoughBalance(sizeUsdc)) {
+          const bal = getCachedBalance();
+          console.warn(`⏭ SKIP: cached balance $${bal.balance?.toFixed(2)} too low for $${sizeUsdc} (checked ${Math.round((Date.now() - bal.lastChecked) / 1000)}s ago)`);
+          logLiveEvent({
+            event: "ORDER_SKIPPED",
+            reason: "BALANCE_TOO_LOW",
+            tokenID: whaleTrade.asset,
+            conditionId: whaleTrade.conditionId,
+            cachedBalance: bal.balance,
+            requestedSize: sizeUsdc,
+          });
+          decrementOrder(whaleTrade.conditionId, sizeUsdc);
+          consecutiveBalanceErrors++;
+          liveOrdersFailed++;
+          lastOrderTs = Date.now();
+          lastOrderStatus = "BALANCE_TOO_LOW";
+          if (consecutiveBalanceErrors >= MAX_BALANCE_ERRORS) {
+            triggerAutoFallback(`${consecutiveBalanceErrors} consecutive balance failures — cached balance $${bal.balance?.toFixed(2)}`);
+          }
+          return;
+        }
+
         console.log(`[LIVE] Placing FOK order: token=${tokenID.slice(0, 10)}…, price=${roundedPrice}, size=${sizeUsdc}, feeRateBps=1000`);
 
         const orderResponse = await client.createAndPostOrder({
@@ -667,8 +697,29 @@ async function executeCopyTrade(whaleTrade: WhaleTrade, filterPreset: FilterPres
             consecutiveBalanceErrors,
             error: error.message,
           });
+          // Refresh balance cache after every API rejection
+          queryBalance().catch(() => {});
+
+          // At 2 consecutive errors: try CLOB reconnect (session may be stale)
+          if (consecutiveBalanceErrors === 2 && !clobReconnecting) {
+            clobReconnecting = true;
+            console.warn(`⚠ ${consecutiveBalanceErrors} consecutive balance errors — attempting CLOB reconnect...`);
+            logEvent(`⚠ CLOB reconnect triggered after ${consecutiveBalanceErrors} balance errors`, "risk");
+
+            reconnectClobClient().then((ok) => {
+              clobReconnecting = false;
+              if (ok) {
+                consecutiveBalanceErrors = 0;
+                logEvent("✅ CLOB reconnected — balance errors may resolve", "info");
+              } else {
+                logEvent("❌ CLOB reconnect failed — will fallback if errors continue", "risk");
+              }
+            }).catch(() => { clobReconnecting = false; });
+          }
+
+          // At MAX_BALANCE_ERRORS: give up and fallback to PAPER
           if (consecutiveBalanceErrors >= MAX_BALANCE_ERRORS) {
-            triggerAutoFallback(`${consecutiveBalanceErrors} consecutive balance rejections — wallet likely empty or funds locked in open positions`);
+            triggerAutoFallback(`${consecutiveBalanceErrors} consecutive balance rejections — wallet may be empty, funds locked, or CLOB session stale`);
           }
           return;
         }
