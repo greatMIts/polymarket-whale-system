@@ -509,7 +509,11 @@ const restBookFetchTimes = new Map<string, number>();
 
 export async function fetchBookFromRest(tokenId: string): Promise<{ ask: number; bid: number }> {
   const lastFetch = restBookFetchTimes.get(tokenId) || 0;
-  if (Date.now() - lastFetch < 10_000) {
+  const bookTs = tokenBookUpdateTs.get(tokenId) || 0;
+  const bookIsStale = bookTs === 0 || (Date.now() - bookTs) > 15_000;
+
+  // Only throttle if we already have a fresh book — always retry for stale/missing books
+  if (!bookIsStale && Date.now() - lastFetch < 10_000) {
     return marketState.tokenBook.get(tokenId) || { ask: 0, bid: 0 };
   }
   restBookFetchTimes.set(tokenId, Date.now());
