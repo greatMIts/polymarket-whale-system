@@ -105,7 +105,7 @@ header {
 .tab.active { color: var(--gold); border-bottom-color: var(--gold); }
 
 /* Tab content */
-.tab-content { display: none; padding: 1rem 1.5rem; }
+.tab-content { display: none; padding: 0.5rem 1.5rem; }
 .tab-content.active { display: block; }
 
 /* Tables */
@@ -137,10 +137,21 @@ tr.stack-entry { border-left: 3px solid var(--green-stack); }
   gap: 1rem; margin: 1rem 0;
 }
 .setting-group {
-  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0.6rem 0.8rem;
 }
 .setting-group h3 { font-size: 0.85rem; color: var(--gold); margin-bottom: 0.8rem; }
-.setting-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; }
+.setting-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem; }
+.settings-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.3rem 1.2rem;
+}
+.settings-2col .setting-row {
+  margin-bottom: 0.2rem;
+}
+.settings-2col .full-width {
+  grid-column: 1 / -1;
+}
 .setting-row label { font-size: 0.8rem; color: var(--text-dim); }
 .setting-row input, .setting-row select {
   background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
@@ -356,46 +367,44 @@ tr.stack-entry { border-left: 3px solid var(--green-stack); }
 
 <!-- TAB: SETTINGS -->
 <div id="tab-settings" class="tab-content">
-  <h3 style="margin-bottom:1rem; font-size:1rem;">Active Filter</h3>
-  <div class="filter-label" id="filter-label">
-    <span class="name">—</span>
+  <div style="display:flex; align-items:center; gap:1rem; margin-bottom:0.8rem;">
+    <span style="font-size:0.85rem; color:var(--text-dim);">Active Filter:</span>
+    <div class="filter-label" id="filter-label" style="margin:0;"><span class="name">—</span></div>
   </div>
-
-  <h3 style="margin:1.5rem 0 1rem; font-size:1rem;">Bot Configuration</h3>
   <div class="settings-grid">
 
     <!-- PANEL 1: Trading & Risk -->
     <div class="setting-group">
       <h3>Trading & Risk</h3>
-      <div class="setting-row">
-        <label>Mode</label>
-        <select id="set-mode"><option value="PAPER">Paper</option><option value="LIVE">Live</option></select>
-      </div>
-      <div id="live-unavailable" class="live-unavailable" style="display:none;">LIVE unavailable — wallet not configured</div>
-      <div class="setting-row">
-        <label>Bot Enabled</label>
-        <select id="set-enabled"><option value="true">Yes</option><option value="false">No</option></select>
-      </div>
-      <div class="setting-row">
-        <label>Take Profit</label>
-        <select id="set-tp-enabled">
-          <option value="false">Disabled</option>
-          <option value="true">Enabled</option>
-        </select>
-      </div>
-      <div class="setting-row" id="tp-price-row" style="display:none;">
-        <label>TP Threshold</label>
-        <input type="number" id="set-tp-price" min="0.50" max="0.99" step="0.01" value="0.90"
-               title="Sell when share bid price reaches this level (e.g. 0.90 = sell at 90 cents)">
-      </div>
-      <div style="border-top:1px solid var(--border); margin:0.6rem 0 0.4rem; padding-top:0.5rem;">
-        <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Bet Size</span>
-      </div>
-      <div class="setting-row">
-        <label>Standard Size ($)</label>
-        <input type="number" id="set-std-size" min="1" max="1000" step="1">
-      </div>
-      <div id="hc-fields">
+      <div class="settings-2col">
+        <div class="setting-row">
+          <label>Mode</label>
+          <select id="set-mode"><option value="PAPER">Paper</option><option value="LIVE">Live</option></select>
+        </div>
+        <div class="setting-row">
+          <label>Bot Enabled</label>
+          <select id="set-enabled"><option value="true">Yes</option><option value="false">No</option></select>
+        </div>
+        <div class="setting-row">
+          <label>Take Profit</label>
+          <select id="set-tp-enabled">
+            <option value="false">Disabled</option>
+            <option value="true">Enabled</option>
+          </select>
+        </div>
+        <div class="setting-row" id="tp-price-row" style="display:none;">
+          <label>TP Threshold</label>
+          <input type="number" id="set-tp-price" min="0.50" max="0.99" step="0.01" value="0.90"
+                 title="Sell when share bid price reaches this level (e.g. 0.90 = sell at 90 cents)">
+        </div>
+        <div id="live-unavailable" class="live-unavailable full-width" style="display:none;">LIVE unavailable — wallet not configured</div>
+        <div class="full-width" style="border-top:1px solid var(--border); margin:0.4rem 0 0.2rem; padding-top:0.4rem;">
+          <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Bet Size</span>
+        </div>
+        <div class="setting-row">
+          <label>Standard ($)</label>
+          <input type="number" id="set-std-size" min="1" max="1000" step="1">
+        </div>
         <div class="setting-row">
           <label>HC Size ($)</label>
           <input type="number" id="set-hc-size" min="1" max="1000" step="1">
@@ -404,103 +413,108 @@ tr.stack-entry { border-left: 3px solid var(--green-stack); }
           <label>HC Threshold</label>
           <input type="number" id="set-hc-threshold" min="0.50" max="0.99" step="0.01">
         </div>
-      </div>
-      <div style="border-top:1px solid var(--border); margin:0.6rem 0 0.4rem; padding-top:0.5rem;">
-        <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Risk Limits</span>
-      </div>
-      <div class="setting-row">
-        <label>Max Open Positions</label>
-        <input type="number" id="set-maxpos" min="1" max="50" step="1">
-      </div>
-      <div class="setting-row">
-        <label>Max Exposure ($)</label>
-        <input type="number" id="set-exposure" min="50" max="10000" step="50">
-      </div>
-      <div class="setting-row">
-        <label>Max Loss/Hour ($)</label>
-        <input type="number" id="set-loss-hour" min="10" max="5000" step="10">
-      </div>
-      <div class="setting-row">
-        <label>Max Loss/Session ($)</label>
-        <input type="number" id="set-loss-session" min="50" max="10000" step="50">
-      </div>
-      <div class="setting-row">
-        <label>Cooldown (ms)</label>
-        <input type="number" id="set-cooldown" min="1000" max="60000" step="1000">
-      </div>
-      <div style="border-top:1px solid var(--border); margin:0.6rem 0 0.4rem; padding-top:0.5rem;">
-        <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Stacking</span>
-      </div>
-      <div class="setting-row">
-        <label>Max Entries/Contract</label>
-        <input type="number" id="set-max-stack" min="1" max="5" step="1">
-      </div>
-      <div class="setting-row">
-        <label>Min Stack Size ($)</label>
-        <input type="number" id="set-min-stack" min="5" max="500" step="5">
+        <div class="setting-row" style="visibility:hidden;"></div>
+        <div class="full-width" style="border-top:1px solid var(--border); margin:0.4rem 0 0.2rem; padding-top:0.4rem;">
+          <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Risk Limits</span>
+        </div>
+        <div class="setting-row">
+          <label>Max Open Pos</label>
+          <input type="number" id="set-maxpos" min="1" max="50" step="1">
+        </div>
+        <div class="setting-row">
+          <label>Max Exposure ($)</label>
+          <input type="number" id="set-exposure" min="50" max="10000" step="50">
+        </div>
+        <div class="setting-row">
+          <label>Max Loss/Hr ($)</label>
+          <input type="number" id="set-loss-hour" min="10" max="5000" step="10">
+        </div>
+        <div class="setting-row">
+          <label>Max Loss/Sess ($)</label>
+          <input type="number" id="set-loss-session" min="50" max="10000" step="50">
+        </div>
+        <div class="setting-row">
+          <label>Cooldown (ms)</label>
+          <input type="number" id="set-cooldown" min="1000" max="60000" step="1000">
+        </div>
+        <div class="setting-row" style="visibility:hidden;"></div>
+        <div class="full-width" style="border-top:1px solid var(--border); margin:0.4rem 0 0.2rem; padding-top:0.4rem;">
+          <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Stacking</span>
+        </div>
+        <div class="setting-row">
+          <label>Max Entries/Contract</label>
+          <input type="number" id="set-max-stack" min="1" max="5" step="1">
+        </div>
+        <div class="setting-row">
+          <label>Min Stack Size ($)</label>
+          <input type="number" id="set-min-stack" min="5" max="500" step="5">
+        </div>
       </div>
     </div>
 
     <!-- PANEL 2: Filters & Wallets -->
     <div class="setting-group">
       <h3>Filters & Wallets</h3>
-      <div style="margin-bottom:0.4rem;">
-        <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Signal Filters</span>
+      <div class="settings-2col">
+        <div class="full-width" style="margin-bottom:0.2rem;">
+          <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Signal Filters</span>
+        </div>
+        <div class="setting-row">
+          <label>Price Floor</label>
+          <input type="number" id="set-price-floor" min="0.01" max="1.0" step="0.01">
+        </div>
+        <div class="setting-row">
+          <label>Price Ceiling</label>
+          <input type="number" id="set-price-ceiling" min="0.50" max="1.0" step="0.01">
+        </div>
+        <div class="setting-row">
+          <label>MidEdge Ranges</label>
+          <input type="text" id="set-midedge-ranges" placeholder="<-0.05" style="width:140px;">
+        </div>
+        <div class="setting-row">
+          <label>Edge Threshold</label>
+          <input type="number" id="set-edge-threshold" min="-1.0" max="1.0" step="0.01">
+        </div>
+        <div class="setting-row">
+          <label>Edge vs Spot</label>
+          <select id="set-edge-enabled"><option value="true">Enabled</option><option value="false">Disabled</option></select>
+        </div>
+        <div class="setting-row">
+          <label>Momentum</label>
+          <select id="set-momentum"><option value="true">Yes</option><option value="false">No</option></select>
+        </div>
+        <div class="setting-row">
+          <label>Whale Gate ($)</label>
+          <input type="number" id="set-whale-gate" min="0" max="1000" step="1">
+        </div>
+        <div class="setting-row" style="visibility:hidden;"></div>
+        <div class="full-width" style="border-top:1px solid var(--border); margin:0.4rem 0 0.2rem; padding-top:0.4rem;">
+          <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Timing Windows</span>
+        </div>
+        <div class="setting-row">
+          <label>5min Secs</label>
+          <input type="text" id="set-secs-5m" placeholder="90-200" style="width:140px;">
+        </div>
+        <div class="setting-row">
+          <label>15min Secs</label>
+          <input type="text" id="set-secs-15m" placeholder="90-300" style="width:140px;">
+        </div>
+        <div class="full-width" style="border-top:1px solid var(--border); margin:0.4rem 0 0.2rem; padding-top:0.4rem;">
+          <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Assets & Sides</span>
+        </div>
+        <div class="setting-row">
+          <label>Allowed Assets</label>
+          <input type="text" id="set-assets" placeholder="BTC,ETH" style="width:140px;">
+        </div>
+        <div class="setting-row">
+          <label>Allowed Sides</label>
+          <select id="set-sides">
+            <option value="BUY">BUY only</option>
+            <option value="BUY,SELL">BUY + SELL</option>
+          </select>
+        </div>
       </div>
-      <div class="setting-row">
-        <label>Price Floor</label>
-        <input type="number" id="set-price-floor" min="0.01" max="1.0" step="0.01" title="Min price to accept trades">
-      </div>
-      <div class="setting-row">
-        <label>Price Ceiling</label>
-        <input type="number" id="set-price-ceiling" min="0.50" max="1.0" step="0.01" title="Max price (>= 1.0 = no ceiling)">
-      </div>
-      <div class="setting-row">
-        <label>MidEdge Ranges</label>
-        <input type="text" id="set-midedge-ranges" placeholder="<-0.05" style="width:180px;" title="e.g. <-0.05 or <-0.15,>0.05 or -0.20 to -0.05">
-      </div>
-      <div class="setting-row">
-        <label>Edge vs Spot</label>
-        <select id="set-edge-enabled"><option value="true">Enabled</option><option value="false">Disabled</option></select>
-      </div>
-      <div class="setting-row">
-        <label>Edge Threshold</label>
-        <input type="number" id="set-edge-threshold" min="-1.0" max="1.0" step="0.01" title="edgeVsSpot must be > this">
-      </div>
-      <div class="setting-row">
-        <label>Momentum Required</label>
-        <select id="set-momentum"><option value="true">Yes</option><option value="false">No</option></select>
-      </div>
-      <div class="setting-row">
-        <label>Whale Size Gate ($)</label>
-        <input type="number" id="set-whale-gate" min="0" max="1000" step="1" title="Min whale usdcSize to accept">
-      </div>
-      <div style="border-top:1px solid var(--border); margin:0.6rem 0 0.4rem; padding-top:0.5rem;">
-        <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Timing Windows</span>
-      </div>
-      <div class="setting-row">
-        <label>5min Secs Ranges</label>
-        <input type="text" id="set-secs-5m" placeholder="90-200" style="width:180px;" title="e.g. 90-200 or 90-120,150-210">
-      </div>
-      <div class="setting-row">
-        <label>15min Secs Ranges</label>
-        <input type="text" id="set-secs-15m" placeholder="90-300" style="width:180px;" title="e.g. 90-300">
-      </div>
-      <div style="border-top:1px solid var(--border); margin:0.6rem 0 0.4rem; padding-top:0.5rem;">
-        <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Assets & Sides</span>
-      </div>
-      <div class="setting-row">
-        <label>Allowed Assets</label>
-        <input type="text" id="set-assets" placeholder="BTC,ETH" style="width:150px;">
-      </div>
-      <div class="setting-row">
-        <label>Allowed Sides</label>
-        <select id="set-sides">
-          <option value="BUY">BUY only</option>
-          <option value="BUY,SELL">BUY + SELL</option>
-        </select>
-      </div>
-      <div style="border-top:1px solid var(--border); margin:0.6rem 0 0.4rem; padding-top:0.5rem;">
+      <div style="border-top:1px solid var(--border); margin:0.6rem 0 0.4rem; padding-top:0.4rem;">
         <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Signal Wallets</span>
         <span style="font-size:0.6rem; color:var(--text-dim); font-weight:400; margin-left:0.3rem;">(LIVE: only checked wallets trigger copies)</span>
       </div>
