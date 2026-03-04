@@ -240,8 +240,8 @@ function loadSettings() {
         // Force conservative risk limits (PAPER data collection)
         settings.maxOpenPositions = 15;
         settings.maxExposureUSD = 300;
-        settings.maxLossPerHour = 100;
-        settings.maxLossPerSession = 200;
+        settings.maxLossPerHour = 240;
+        settings.maxLossPerSession = 500;
         settings.cooldownMs = 5000;
       }
 
@@ -271,11 +271,11 @@ const BAL_LIVE_OVERRIDES: Partial<BotSettings> = {
   maxEntriesPerContract: 1,       // NO stacking for BAL LIVE safety
 };
 
-// GP-specific LIVE overrides — OG GOLD: no stacking, conservative limits
+// GP-specific LIVE overrides — OG GOLD: no stacking
 const GP_LIVE_OVERRIDES: Partial<BotSettings> = {
   maxExposureUSD: 300,
-  maxLossPerHour: 100,
-  maxLossPerSession: 200,
+  maxLossPerHour: 240,
+  maxLossPerSession: 500,
   maxEntriesPerContract: 1,       // OG GOLD: NO stacking — 1 entry per contract
 };
 

@@ -176,8 +176,8 @@ const BOT_RISK_OVERRIDES: Record<FilterPresetName, Partial<typeof BASE_RISK>> = 
   },
   GOLD_PLUS: {
     maxExposureUSD: 300,
-    maxLossPerHour: 100,
-    maxLossPerSession: 200,
+    maxLossPerHour: 240,
+    maxLossPerSession: 500,
     maxEntriesPerContract: 1,     // no stacking — 1 entry per contract
   },
 };
