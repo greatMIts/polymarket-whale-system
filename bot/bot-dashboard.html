@@ -120,6 +120,8 @@ td { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); font-family
 tr:hover { background: var(--surface); }
 .green { color: var(--green); } .red { color: var(--red); } .gold { color: var(--gold); }
 .blue { color: var(--blue); } .purple { color: var(--purple); }
+.open-pos-table { width: 100%; table-layout: fixed; }
+.open-pos-table td:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* High conviction indicator */
 .hc-indicator { color: var(--gold); font-weight: 700; }
@@ -295,19 +297,18 @@ tr.stack-entry { border-left: 3px solid var(--green-stack); }
       <div class="event-log" id="event-log"></div>
       <h3 style="margin:1rem 0 0.5rem; font-size:0.9rem;">Open Positions (<span id="open-count">0</span>)</h3>
       <div class="table-scroll" style="max-height: calc(100vh - 520px); min-height: 300px;">
-        <table style="table-layout:fixed; width:100%;">
+        <table class="open-pos-table">
           <colgroup>
-            <col style="width:28%;">
-            <col style="width:12%;">
-            <col style="width:8%;">
-            <col style="width:11%;">
-            <col style="width:7%;">
-            <col style="width:8%;">
-            <col style="width:7%;">
-            <col style="width:12%;">
-            <col style="width:8%;">
+            <col>
+            <col style="width:42px;">
+            <col style="width:55px;">
+            <col style="width:65px;">
+            <col style="width:50px;">
+            <col style="width:45px;">
+            <col style="width:38px;">
+            <col style="width:40px;">
           </colgroup>
-          <thead><tr><th>Title</th><th>Asset</th><th>Wallet</th><th>Side</th><th>Entry</th><th>Current</th><th>Size</th><th>Stack</th><th>Secs</th></tr></thead>
+          <thead><tr><th>Title</th><th>Asset</th><th>Wallet</th><th>Side</th><th>Entry</th><th>Size</th><th>Stack</th><th>Secs</th></tr></thead>
           <tbody id="open-table"></tbody>
         </table>
       </div>
@@ -374,6 +375,18 @@ tr.stack-entry { border-left: 3px solid var(--green-stack); }
       <div class="setting-row">
         <label>Bot Enabled</label>
         <select id="set-enabled"><option value="true">Yes</option><option value="false">No</option></select>
+      </div>
+      <div class="setting-row">
+        <label>Take Profit</label>
+        <select id="set-tp-enabled">
+          <option value="false">Disabled</option>
+          <option value="true">Enabled</option>
+        </select>
+      </div>
+      <div class="setting-row" id="tp-price-row" style="display:none;">
+        <label>TP Threshold</label>
+        <input type="number" id="set-tp-price" min="0.50" max="0.99" step="0.01" value="0.90"
+               title="Sell when share bid price reaches this level (e.g. 0.90 = sell at 90 cents)">
       </div>
       <div style="border-top:1px solid var(--border); margin:0.6rem 0 0.4rem; padding-top:0.5rem;">
         <span style="font-size:0.7rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Bet Size</span>
@@ -593,6 +606,9 @@ document.querySelectorAll('.tab').forEach(tab => {
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
   });
+});
+document.getElementById('set-tp-enabled').addEventListener('change', function() {
+  document.getElementById('tp-price-row').style.display = this.value === 'true' ? '' : 'none';
 });
 
 // ─── RENDER ───────────────────────────────────────────────────────────
@@ -832,7 +848,6 @@ function wouldPassFilter(t) {
 function renderOpenTable() {
   const tbody = document.getElementById('open-table');
   const positions = state.openPositions || [];
-  const mids = state.tokenMids || {};
   document.getElementById('open-count').textContent = positions.length;
 
   let html = '';
@@ -850,23 +865,18 @@ function renderOpenTable() {
     const stackLabel = isStack ? `<span style="color:var(--green-stack);">${p.stackEntry}/${p.stackTotal}</span>` : '1';
     const sizeLabel = isHC ? `<span class="hc-indicator">$${p.sizeUsdc.toFixed(0)} ⚡</span>` : `$${p.sizeUsdc.toFixed(0)}`;
 
-    // Current live share price from Polymarket order book
-    const currentMid = mids[p.asset];
-    const currentStr = (currentMid && currentMid > 0) ? currentMid.toFixed(3) : '—';
-
     html += `<tr ${trCls}>
-      <td style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${title}">${title}</td>
+      <td title="${title}">${title}</td>
       <td class="blue">${p.assetLabel || '?'}</td>
       <td>${p.walletLabel || '?'}</td>
       <td class="${p.side === 'BUY' ? 'green' : 'red'}">${p.side} ${p.outcome}</td>
       <td>${p.entryPrice.toFixed(3)}</td>
-      <td>${currentStr}</td>
       <td>${sizeLabel}</td>
       <td>${stackLabel}</td>
       <td>${p.secsRemaining.toFixed(0)}</td>
     </tr>`;
   }
-  tbody.innerHTML = html || '<tr><td colspan="9" style="text-align:center;color:var(--text-dim);">No open positions</td></tr>';
+  tbody.innerHTML = html || '<tr><td colspan="8" style="text-align:center;color:var(--text-dim);">No open positions</td></tr>';
 }
 
 function renderClosedTable() {
@@ -1187,6 +1197,8 @@ function saveSettings() {
     whaleSizeGate: parseFloat(document.getElementById('set-whale-gate').value) || 0,
     secsRanges5m: parseSecsRanges(document.getElementById('set-secs-5m').value),
     secsRanges15m: parseSecsRanges(document.getElementById('set-secs-15m').value),
+    takeProfitEnabled: document.getElementById('set-tp-enabled').value === 'true',
+    takeProfitPrice: parseFloat(document.getElementById('set-tp-price').value) || 0.90,
   };
   if (ws && ws.readyState === 1) {
     ws.send(JSON.stringify({ type: 'update_settings', settings }));
@@ -1281,6 +1293,9 @@ function populateSettings() {
   document.getElementById('set-assets').value = (s.allowedAssets || []).join(',');
   document.getElementById('set-sides').value = (s.allowedSides || ['BUY']).join(',');
   renderWalletPicker(s.enabledWallets || []);
+  document.getElementById('set-tp-enabled').value = s.takeProfitEnabled ? 'true' : 'false';
+  document.getElementById('set-tp-price').value = s.takeProfitPrice ?? 0.90;
+  document.getElementById('tp-price-row').style.display = s.takeProfitEnabled ? '' : 'none';
 
   // Show/hide HC fields based on bot identity
   const isNB = state.botId === 'NEW_BEST';

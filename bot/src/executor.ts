@@ -50,6 +50,9 @@ let stats: BotStats = {
 // Event log for dashboard
 const eventLog: { ts: number; msg: string; type: "info" | "trade" | "risk" | "resolution" }[] = [];
 
+// Take profit: track in-flight LIVE SELL orders to prevent race with resolvePositions
+const takeProfitInFlight = new Set<string>();
+
 function logEvent(msg: string, type: "info" | "trade" | "risk" | "resolution" = "info") {
   eventLog.unshift({ ts: Date.now(), msg, type });
   if (eventLog.length > 500) eventLog.pop();
@@ -86,6 +89,8 @@ let settings: BotSettings = {
   whaleSizeGate: DEFAULT_FILTER.whaleSizeGate,
   secsRanges5m: DEFAULT_FILTER.secsRanges5m,
   secsRanges15m: DEFAULT_FILTER.secsRanges15m,
+  takeProfitEnabled: DEFAULT_RISK.takeProfitEnabled,
+  takeProfitPrice: DEFAULT_RISK.takeProfitPrice,
 };
 
 export function getSettings(): BotSettings {
@@ -200,6 +205,9 @@ function loadSettings() {
         catch { settings.secsRanges15m = DEFAULT_FILTER.secsRanges15m; }
       }
       console.log(`[settings] Filter params: floor=${settings.priceFloor}, ceil=${settings.priceCeiling}, edgeEnabled=${settings.edgeVsSpotEnabled}, gate=$${settings.whaleSizeGate}, secs5m=${JSON.stringify(settings.secsRanges5m)}`);
+      // v11: take profit migration
+      if (settings.takeProfitEnabled === undefined) settings.takeProfitEnabled = false;
+      if (settings.takeProfitPrice === undefined) settings.takeProfitPrice = 0.90;
 
       // BAL-specific migrations
       if (BOT_ID === "BALANCED") {
@@ -782,6 +790,8 @@ export function resolvePositions() {
   for (const pos of open) {
     const resolution = resolutionCache.get(pos.conditionId);
     if (resolution === undefined || resolution === null) continue;
+    // Skip positions with in-flight take profit SELL orders
+    if (takeProfitInFlight.has(pos.id)) continue;
 
     // Safety check: if this LIVE position was never confirmed (FOK didn't fill),
     // remove it without counting in W/L stats — it had 0 shares.
@@ -848,6 +858,178 @@ function recalcStats() {
   stats.todayPnl = getTodayPnl();
   stats.todayTrades = getTodayTradeCount();
   stats.avgPnlPerTrade = closed.length > 0 ? stats.totalPnl / closed.length : 0;
+}
+
+// ─── PERSIST TRADE UPDATE ──────────────────────────────────────────────────
+// Appends the updated trade to JSONL (same pattern as new trade).
+// On restart, loadBotTrades() deduplicates by id (last occurrence wins).
+// Compatible with file rotation — does NOT rewrite the entire file.
+
+function persistTradeUpdate(trade: BotTrade) {
+  try {
+    fs.appendFileSync(CONFIG.botTradesFile, JSON.stringify(trade) + "\n");
+    trackAppend(botTradesRotationConfig);
+  } catch (e: any) {
+    console.error("[persistTradeUpdate] Failed:", e.message);
+  }
+}
+
+// ─── TAKE PROFIT ───────────────────────────────────────────────────────────
+
+async function checkTakeProfit() {
+  const s = getEffectiveSettings();
+  if (!s.takeProfitEnabled) return;
+  if (s.takeProfitPrice <= 0 || s.takeProfitPrice >= 1.0) return;
+
+  const threshold = s.takeProfitPrice;
+  const open = getOpenPositions();
+
+  for (const pos of open) {
+    if (takeProfitInFlight.has(pos.id)) continue;
+
+    // Use BID price — that's what we'd actually receive when selling
+    const book = marketState.tokenBook.get(pos.asset);
+    if (!book || book.bid <= 0) continue;
+    if (book.bid < threshold) continue;
+
+    // Take profit triggered
+    const currentBid = book.bid;
+    console.log(`[TAKE PROFIT] ${pos.title.slice(0, 40)} | bid=${currentBid.toFixed(3)} >= threshold=${threshold} | mode=${settings.mode}`);
+
+    if (settings.mode === "LIVE") {
+      takeProfitInFlight.add(pos.id);
+      try {
+        await executeTakeProfitLive(pos, currentBid);
+      } finally {
+        takeProfitInFlight.delete(pos.id);
+      }
+    } else {
+      executeTakeProfitPaper(pos, currentBid);
+    }
+  }
+}
+
+function executeTakeProfitPaper(pos: BotTrade, exitPrice: number) {
+  const pnl = (exitPrice - pos.entryPrice) * pos.shares;
+
+  pos.resolution = "TAKE_PROFIT";
+  pos.won = pnl > 0;
+  pos.pnl = pnl;
+  pos.exitPrice = exitPrice;
+  pos.resolvedAt = Date.now();
+  pos.status = pos.won ? "WON" : "LOST";
+
+  if (pos.won) stats.wins++;
+  else stats.losses++;
+  stats.totalPnl += pnl;
+  if (pnl > stats.bestTrade) stats.bestTrade = pnl;
+  if (pnl < stats.worstTrade) stats.worstTrade = pnl;
+
+  recalcStats();
+  persistTradeUpdate(pos);
+
+  const emoji = pos.won ? "\uD83C\uDFAF" : "\uD83D\uDCC9";
+  logEvent(
+    `${emoji} TAKE PROFIT [PAPER] ${pos.title.slice(0, 35)} | exit=${exitPrice.toFixed(3)} | entry=${pos.entryPrice.toFixed(3)} | PnL $${pnl.toFixed(2)} | $${pos.sizeUsdc}`,
+    "resolution"
+  );
+}
+
+async function executeTakeProfitLive(pos: BotTrade, currentBid: number) {
+  if (pos.status !== "OPEN") return;  // already closed by resolvePositions during race
+
+  const client = getClobClient();
+  if (!client) {
+    console.error("[TAKE PROFIT] LIVE mode but CLOB client unavailable — skipping");
+    return;
+  }
+
+  // Price: bid minus 1 tick (aggressive, ensures FOK fill)
+  const sellPrice = Math.round((currentBid - 0.01) * 100) / 100;
+  if (sellPrice <= 0) return;
+
+  // CLOB SELL: size = shares (tokens), NOT USDC
+  const contractInfo = marketState.assetToContract.get(pos.asset);
+  const negRisk = contractInfo?.negRisk ?? false;
+
+  try {
+    console.log(`[TAKE PROFIT LIVE] FOK SELL: token=${pos.asset.slice(0, 10)}…, price=${sellPrice}, shares=${pos.shares.toFixed(4)}`);
+
+    const orderResponse = await client.createAndPostOrder({
+      tokenID: pos.asset,
+      price: sellPrice,
+      size: pos.shares,
+      side: Side.SELL,
+      feeRateBps: 1000,
+      orderType: OrderType.FOK,
+    } as any, {
+      tickSize: "0.01",
+      negRisk,
+    });
+
+    // Re-check status after await — resolvePositions may have closed it
+    if (pos.status !== "OPEN") {
+      console.warn(`[TAKE PROFIT] Position already closed during CLOB call — discarding sell result`);
+      return;
+    }
+
+    if (!orderResponse || !orderResponse.orderID) {
+      throw new Error("No orderID in SELL response: " + JSON.stringify(orderResponse));
+    }
+
+    console.log(`\u2705 TAKE PROFIT SELL filled: ${orderResponse.orderID} | ${pos.asset.slice(0, 10)}… | ${pos.shares.toFixed(2)} shares @ ${sellPrice}`);
+
+    const pnl = (sellPrice - pos.entryPrice) * pos.shares;
+    pos.resolution = "TAKE_PROFIT";
+    pos.won = pnl > 0;
+    pos.pnl = pnl;
+    pos.exitPrice = sellPrice;
+    pos.resolvedAt = Date.now();
+    pos.status = pos.won ? "WON" : "LOST";
+
+    if (pos.won) stats.wins++;
+    else stats.losses++;
+    stats.totalPnl += pnl;
+    if (pnl > stats.bestTrade) stats.bestTrade = pnl;
+    if (pnl < stats.worstTrade) stats.worstTrade = pnl;
+    recalcStats();
+    persistTradeUpdate(pos);
+
+    logLiveEvent({
+      event: "TAKE_PROFIT_SOLD",
+      orderID: orderResponse.orderID,
+      tokenID: pos.asset,
+      conditionId: pos.conditionId,
+      sellPrice,
+      entryPrice: pos.entryPrice,
+      shares: pos.shares,
+      pnl,
+    });
+
+    logEvent(
+      `\uD83C\uDFAF TAKE PROFIT [LIVE] ${pos.title.slice(0, 35)} | sold=${sellPrice.toFixed(3)} | entry=${pos.entryPrice.toFixed(3)} | PnL $${pnl.toFixed(2)}`,
+      "resolution"
+    );
+  } catch (error: any) {
+    const errMsg = (error.message || "").toLowerCase();
+    const isFokRejection = errMsg.includes("no fill") || errMsg.includes("cancelled") || errMsg.includes("crosses");
+
+    if (isFokRejection) {
+      console.warn(`[TAKE PROFIT] FOK SELL couldn't fill at ${sellPrice} — will retry next 2s cycle`);
+    } else {
+      console.error(`[TAKE PROFIT] SELL FAILED:`, error.message);
+      logLiveEvent({
+        event: "TAKE_PROFIT_FAILED",
+        tokenID: pos.asset,
+        conditionId: pos.conditionId,
+        requestedPrice: sellPrice,
+        shares: pos.shares,
+        error: error.message,
+      });
+    }
+    // Take profit failures do NOT count toward auto-fallback (consecutiveFailures).
+    // The position stays OPEN and retries next 2s cycle.
+  }
 }
 
 // ─── DECISIONS ROTATION CONFIG ──────────────────────────────────────────────
@@ -1098,6 +1280,22 @@ async function onNewWhaleTrade(trade: WhaleTrade) {
     return;
   }
 
+  // Step 4.5: Fresh price ceiling re-check at bot's fill time
+  if (effectiveSettings.priceCeiling < 1.0) {
+    const freshMid = getFreshPolyMid(trade.asset);
+    if (freshMid > 0 && freshMid > effectiveSettings.priceCeiling) {
+      stats.tradesRejectedByRisk++;
+      logDecision(trade, "SKIP_RISK", filterResult.presetName, filterResult.reasons,
+        `Fresh mid ${freshMid.toFixed(3)} > ceiling ${effectiveSettings.priceCeiling}`);
+      logEvent(
+        `BLOCKED: Fresh mid ${freshMid.toFixed(3)} > ceiling ${effectiveSettings.priceCeiling} | ` +
+        `${trade.walletLabel} ${trade.side} ${trade.outcome} ${trade.assetLabel}`,
+        "risk"
+      );
+      return;
+    }
+  }
+
   // Step 5: Execute (async for LIVE mode CLOB orders)
   logDecision(trade, "COPY", filterResult.presetName, filterResult.reasons);
   await executeCopyTrade(trade, filterResult.presetName, sizeUsdc, sizeReason);
@@ -1150,6 +1348,23 @@ function loadBotTrades() {
       loaded++;
     } catch {}
   }
+  // Deduplicate by id — keep last occurrence (handles take profit re-appends)
+  const idToLastIndex = new Map<string, number>();
+  for (let i = 0; i < botTrades.length; i++) {
+    idToLastIndex.set(botTrades[i].id, i);
+  }
+  if (idToLastIndex.size < botTrades.length) {
+    const keep = new Set(idToLastIndex.values());
+    const deduped: BotTrade[] = [];
+    for (let i = 0; i < botTrades.length; i++) {
+      if (keep.has(i)) deduped.push(botTrades[i]);
+    }
+    const removed = botTrades.length - deduped.length;
+    botTrades.length = 0;
+    botTrades.push(...deduped);
+    loaded = deduped.length;
+    console.log(`[bot-history] Deduplicated: removed ${removed} stale records`);
+  }
   if (loaded > 0) {
     // Recalc stats from loaded trades
     for (const t of botTrades) {
@@ -1192,6 +1407,9 @@ export function initExecutor() {
 
   // Resolve positions every 15s
   setInterval(resolvePositions, 15_000);
+
+  // Take profit check every 2 seconds
+  setInterval(checkTakeProfit, 2_000);
 
   // Clean old cooldowns every 60s
   setInterval(clearOldCooldowns, 60_000);

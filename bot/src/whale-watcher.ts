@@ -197,6 +197,7 @@ async function pollWhale(walletAddress: string, walletLabel: string) {
       };
 
       allWhaleTrades.unshift(whaleTrade);
+      if (allWhaleTrades.length > 10_000) allWhaleTrades.length = 10_000;
       newCount++;
 
       // Emit to all listeners (filter engine, persistence, etc.)
@@ -250,31 +251,3 @@ export function startPolling() {
   }
 }
 
-// ─── LOAD HISTORY (from JSONL) ──────────────────────────────────────────────
-
-import * as fs from "fs";
-
-export function loadHistory() {
-  if (!fs.existsSync(CONFIG.tradesFile)) return;
-  const lines = fs.readFileSync(CONFIG.tradesFile, "utf-8").trim().split("\n").filter(Boolean);
-  let loaded = 0;
-  for (const line of lines) {
-    try {
-      const trade = JSON.parse(line) as WhaleTrade;
-      allWhaleTrades.push(trade);
-      seenTxHashes.add(trade.txHash);
-      loaded++;
-    } catch {}
-  }
-  if (loaded > 0) {
-    console.log(`[history] Loaded ${loaded} whale trades from disk`);
-  }
-}
-
-// ─── PERSISTENCE (append each trade to JSONL) ──────────────────────────────
-
-export function enablePersistence() {
-  onWhaleTrade((trade) => {
-    fs.appendFileSync(CONFIG.tradesFile, JSON.stringify(trade) + "\n");
-  });
-}

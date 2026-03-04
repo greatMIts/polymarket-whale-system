@@ -155,7 +155,7 @@ export interface BotSettings {
   // Filter parameters (v10 — unified filter, dashboard-controllable)
   standardSize: number;               // $10 default — bet size for BAL/GP
   priceFloor: number;                 // 0.50 BAL/GP, 0.70 NB
-  priceCeiling: number;               // 0.85 BAL, 1.0 GP/NB (>=1.0 = no ceiling check)
+  priceCeiling: number;               // 0.85 all bots default (>=1.0 via dashboard = no ceiling check)
   midEdgeRanges: MidEdgeRange[];      // replaces midEdgeThreshold — range-based
   edgeVsSpotEnabled: boolean;         // true NB/BAL, false GP
   edgeVsSpotThreshold: number;        // 0.0
@@ -163,6 +163,9 @@ export interface BotSettings {
   whaleSizeGate: number;              // 10 BAL/GP, 0 NB
   secsRanges5m: number[][];           // [[90,200]] BAL/NB, [[90,300]] GP — discontinuous windows
   secsRanges15m: number[][];          // [[90,300]] all
+  // Take profit
+  takeProfitEnabled: boolean;
+  takeProfitPrice: number;
 }
 
 // ─── Dashboard State ────────────────────────────────────────────────────────

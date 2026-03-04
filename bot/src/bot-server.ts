@@ -36,8 +36,6 @@ import {
 } from "./market-data";
 import {
   startPolling,
-  loadHistory,
-  enablePersistence,
   getRecentWhaleTrades,
   getTotalWhaleTradeCount,
   allWhaleTrades,
@@ -511,10 +509,6 @@ async function main() {
 
   // Create data directory
   fs.mkdirSync(CONFIG.dataDir, { recursive: true });
-
-  // Load history
-  loadHistory();
-  enablePersistence();
 
   // Initialize CLOB client (derives API creds from wallet — requires env vars)
   const clobOk = await initClobClient();

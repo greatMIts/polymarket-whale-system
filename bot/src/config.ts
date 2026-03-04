@@ -83,7 +83,6 @@ export const CONFIG = {
   pollIntervalMs: 3000,       // poll each whale every 3s (staggered 750ms per wallet)
   dataDir: "./data",
   archiveDir: "./data/archives",
-  tradesFile: `./data/${FILE_PREFIX}_trades.jsonl`,          // all whale trades observed
   botTradesFile: `./data/${FILE_PREFIX}_bot_trades.jsonl`,   // bot's own copy trades
   decisionsFile: `./data/${FILE_PREFIX}_decisions.jsonl`,    // EVERY trade decision (copy/skip/blocked) with reasons
   settingsFile: "./data/settings.json",      // persist settings across restarts
@@ -165,6 +164,8 @@ const BASE_RISK = {
   allowedAssets: ["BTC", "ETH"] as string[],
   allowedSides: ["BUY"] as ("BUY" | "SELL")[],
   enabledWallets: DEFAULT_ENABLED_WALLETS,
+  takeProfitEnabled: false,
+  takeProfitPrice: 0.90,
 };
 
 const BOT_RISK_OVERRIDES: Record<FilterPresetName, Partial<typeof BASE_RISK>> = {
@@ -191,7 +192,7 @@ export const DEFAULT_RISK = {
 const BASE_FILTER = {
   standardSize: 10,
   priceFloor: 0.70,
-  priceCeiling: 1.0,
+  priceCeiling: 0.85,
   midEdgeRanges: [{ operator: "lt" as const, value: -0.05 }] as MidEdgeRange[],
   edgeVsSpotEnabled: true,
   edgeVsSpotThreshold: 0.0,
@@ -205,12 +206,10 @@ const BOT_FILTER_OVERRIDES: Record<FilterPresetName, Partial<typeof BASE_FILTER>
   NEW_BEST: {},  // NB: priceFloor 0.70, ceiling 1.0, edgeVsSpot enabled, gate 0
   BALANCED: {
     priceFloor: 0.50,
-    priceCeiling: 0.85,
     whaleSizeGate: 10,
   },
   GOLD_PLUS: {
     priceFloor: 0.50,
-    priceCeiling: 1.0,
     edgeVsSpotEnabled: false,
     whaleSizeGate: 10,
     secsRanges5m: [[90, 300]],
