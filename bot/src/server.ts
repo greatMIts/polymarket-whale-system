@@ -52,6 +52,25 @@ wss.on('connection', (ws) => {
       if (type === 'auth' && token === CONFIG.authToken) {
         authenticatedClients.add(ws);
         ws.send(JSON.stringify({ type: 'auth_ok' }));
+
+        // Handle subsequent messages (settings updates, mode toggle, etc.)
+        ws.on('message', (raw) => {
+          try {
+            const parsed = JSON.parse(raw.toString());
+            if (parsed.type === 'update_settings' && parsed.settings) {
+              const result = settings.update(parsed.settings);
+              if (result.rejected) {
+                ws.send(JSON.stringify({ type: 'settings_updated', rejected: result.rejected }));
+              } else {
+                // Broadcast updated settings to ALL connected clients
+                const payload = JSON.stringify({ type: 'settings_updated', settings: settings.get() });
+                for (const client of authenticatedClients) {
+                  client.send(payload);
+                }
+              }
+            }
+          } catch { /* ignore malformed messages */ }
+        });
       } else {
         ws.close(1008, 'Invalid auth');
       }
@@ -134,6 +153,10 @@ export function broadcastState() {
   const forceSync = broadcastTickCount % 10 === 0;
   if (stateVersion === lastBroadcastVersion && !forceSync) return;
   lastBroadcastVersion = stateVersion;
+
+  // On forceSync, invalidate cache to pick up non-versioned changes
+  // (new events, Binance prices, whale trades, resolution data, etc.)
+  if (forceSync) cachedPayload = null;
 
   const payload = getStatePayload();
   for (const ws of authenticatedClients) {
