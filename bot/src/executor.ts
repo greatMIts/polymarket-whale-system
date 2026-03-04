@@ -498,11 +498,6 @@ function getTodayTradeCount(): number {
 // ─── DYNAMIC POSITION SIZING ────────────────────────────────────────────────
 
 function getTradeSize(entryPrice: number, s: BotSettings): { sizeUsdc: number; sizeReason: string } {
-  // BAL/GP sizing — uses standardSize from settings (dashboard-controllable)
-  if (BOT_ID === "BALANCED" || BOT_ID === "GOLD_PLUS") {
-    const size = s.standardSize || 10;
-    return { sizeUsdc: size, sizeReason: "STANDARD" };
-  }
   if (entryPrice >= s.highConvictionThreshold) {
     return {
       sizeUsdc: s.highConvictionSize,
