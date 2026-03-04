@@ -1,0 +1,297 @@
+# App Structure - Polymarket Whale Copy-Trading Bot
+# Last updated: 2026-03-01 (v9 — OG GOLD reincarnated on GP)
+
+## Overview
+Triple-deployment copy-trading bot that monitors 4-6 Polymarket whale wallets in real-time,
+applies optimized filter strategies (NEW_BEST 90% WR, BALANCED 80.8% WR Strategy D, GOLD_PLUS OG GOLD reincarnated),
+and executes paper/live copy trades with dynamic sizing, position stacking, and risk management.
+Single codebase, three Railway deployments differentiated by BOT_ID env var.
+NB bot currently OFF. BAL is running Strategy D — LIVE enabled. GP is running OG GOLD in PAPER (data collection for A/B comparison vs BAL).
+
+## Repository
+- Local: C:\Users\andre\Desktop\polymarket\polymarket-bot
+- Related: C:\Users\andre\Desktop\polymarket\polymarket-spy — whale spy server
+
+## Deployed Services (Railway)
+
+### NEW_BEST Bot (Primary — 90% WR) — CURRENTLY OFF
+- Dashboard: https://polymarket-whale-bot-production.up.railway.app
+  - Railway Project: polymarket-whale-bot
+  - Service: polymarket-whale-bot
+  - Region: europe-west4 (Amsterdam, Netherlands)
+  - Volume: /app/data (persistent — trades, settings survive redeploys)
+  - Auth Token: 7777777lL
+  - Env: BOT_ID=NEW_BEST
+  - Status: REMOVED (deployment removed)
+
+### BALANCED Bot (Active — 80.8% CWR, Strategy D) — LIVE ENABLED
+- Dashboard: https://whale-bot-balanced-production.up.railway.app
+  - Railway Project: polymarket-whale-bot (same project, ID: 95bc8f95-c4af-4561-9610-609322928576)
+  - Service: whale-bot-balanced
+  - Region: europe-west4 (Amsterdam, Netherlands)
+  - Volume: /app/data (persistent — own independent volume)
+  - Auth Token: 7777777lL
+  - Env: BOT_ID=BALANCED
+  - Status: RUNNING — LIVE trading enabled (was PAPER-only until v8)
+  - LIVE Risk Limits: maxExposure=$200, maxLoss/hr=$50, maxLoss/session=$100, maxEntries=1 (no stacking)
+  - Sizing: Flat $10 (forced via BAL_LIVE_OVERRIDES)
+  - Excluded Wallets (LIVE only): 0x37c9, 0x571c
+  - Wallet sharing warning: uses same wallet (0xdb67) as NB/GP — only one bot LIVE at a time
+
+### GOLD_PLUS Bot (OG GOLD Reincarnated) — PAPER DATA COLLECTION
+- Dashboard: https://whale-bot-gold-plus-production.up.railway.app
+  - Railway Project: polymarket-whale-bot (same project)
+  - Service: whale-bot-gold-plus
+  - Region: europe-west4 (Amsterdam, Netherlands)
+  - Volume: /app/data (persistent — own independent volume)
+  - Auth Token: 7777777lL
+  - Env: BOT_ID=GOLD_PLUS
+  - Status: RUNNING — PAPER mode (OG GOLD data collection alongside BAL's Strategy D)
+  - Filter: OG GOLD reincarnated — midEdge<-0.05, momentum, secs 90-300, whaleSize>=$10, 5+15min, BTC/ETH
+  - No edgeVsBtc, no price floor, no dead hours (keeping it simple like the proven OG)
+  - Sizing: Flat $10 (no high-conviction)
+  - Stacking: maxEntriesPerContract = 1 (no stacking)
+  - Risk: maxExposure=$300, maxLoss/hr=$100, maxLoss/session=$200
+
+### Spy Server
+- Dashboard: https://polymarket-whale-spy-production.up.railway.app
+  - Railway Project: polymarket-whale-spy (ID: 34041633-a65e-4c69-8b01-045e49797b26)
+  - Service: polymarket-whale-spy
+  - Region: europe-west4 (Amsterdam, Netherlands)
+
+## Architecture
+```
+                      ┌─────────────────────────────────────────┐
+                      │  Same codebase, differentiated by       │
+                      │  BOT_ID env var (NEW_BEST/BALANCED/GOLD_PLUS) │
+                      └─────────────────────────────────────────┘
+
+market-data.ts → whale-watcher.ts → filter-engine.ts → risk-manager.ts → executor.ts
+     ↑                                                                         ↓
+  Binance WS                                                           bot-server.ts
+  (+ REST fallback)                                                    (Express + WS)
+  Polymarket WS                                                            ↓
+  Gamma API                                                        bot-dashboard.html
+```
+
+## File Structure
+```
+polymarket-bot/
+├── package.json
+├── tsconfig.json
+├── .gitignore
+├── bot-dashboard.html          # 4-tab dashboard (Live Feed, Positions, Analytics, Settings)
+├── app_structure_llm.txt       # This file
+├── data/                       # Auto-created at runtime, persisted via Railway volume
+│   ├── {PREFIX}_trades.jsonl   # All observed whale trades (append-only)
+│   ├── {PREFIX}_bot_trades.jsonl # Bot's own copy trades (with rotation)
+│   ├── {PREFIX}_decisions.jsonl  # All trade decisions (COPY/SKIP, with rotation)
+│   ├── {PREFIX}_live_events.jsonl # Live trading audit trail (with rotation)
+│   ├── settings.json           # Persisted settings
+│   └── archives/               # Rotated CSV archives (70K lines → CSV, 10 max)
+│       ├── {PREFIX}_decisions_*.csv
+│       ├── {PREFIX}_bot_trades_*.csv
+│       └── {PREFIX}_live_events_*.csv
+└── src/
+    ├── config.ts               # BOT_ID, wallets, API URLs, 3 filter presets, defaults
+    ├── types.ts                 # Shared TypeScript interfaces
+    ├── market-data.ts           # Binance WS + REST fallback, Polymarket WS/REST, BS pricing
+    ├── whale-watcher.ts         # Poll wallets, dedup, enrich trades, emit events
+    ├── filter-engine.ts         # 3 filter strategies (NEW_BEST, BALANCED, GOLD_PLUS)
+    ├── risk-manager.ts          # Stacking, exposure caps, hourly/session loss limits, cooldowns
+    ├── executor.ts              # Dynamic sizing, stacking, fresh market data, file rotation
+    ├── clob-client.ts           # Polymarket CLOB client (FOK orders, signatureType=1 POLY_PROXY)
+    ├── live-events.ts           # Live trading audit trail with CSV rotation
+    ├── file-rotation.ts         # JSONL → CSV rotation (70K lines, 10 archives)
+    └── bot-server.ts            # Express + WS server, REST API, CSV export, boot sequence
+```
+
+## Running
+```bash
+# Local (NEW_BEST by default)
+cd polymarket-bot
+npm install
+npx ts-node src/bot-server.ts
+# Dashboard: http://localhost:4444
+
+# Local (BALANCED)
+BOT_ID=BALANCED npx ts-node src/bot-server.ts
+
+# Local (GOLD_PLUS)
+BOT_ID=GOLD_PLUS npx ts-node src/bot-server.ts
+
+# Production (Railway — runs 24/7)
+# BALANCED: https://whale-bot-balanced-production.up.railway.app
+# Token: 7777777lL
+```
+
+## Key Ports
+- 4444: Copy-trading bot (local), Railway uses PORT env var
+- 3333: Spy server (original data collector, separate process)
+
+## API Endpoints (all require ?token=AUTH_TOKEN)
+- GET  /api/stats — Bot performance stats
+- GET  /api/settings — Current settings
+- POST /api/settings — Update settings (JSON body)
+- POST /api/reset-stats — Reset stats + clear closed trades from disk
+- GET  /api/bot-trades — All bot copy trades
+- GET  /api/open-positions — Currently open positions
+- GET  /api/closed-positions — Resolved positions with PnL
+- GET  /api/whale-trades?limit=N — Recent whale trades
+- GET  /api/filters — Filter presets + live pass rates
+- GET  /api/events — Event log
+- GET  /api/system — System status (prices, vols, uptime)
+- GET  /api/export-whale.csv — Download whale trades as CSV
+- GET  /api/export-bot.csv — Download bot trades as CSV
+- GET  /api/export-bot-trades.csv — Alias for bot trades CSV
+- GET  /api/export-decisions.csv — Download decisions as CSV
+- GET  /api/archives — List rotated CSV archives (decisions, bot_trades, live_events)
+- GET  /api/archives/decisions/:filename — Download decision archive
+- GET  /api/archives/bot-trades/:filename — Download bot trades archive
+- GET  /api/archives/live-events/:filename — Download live events archive
+
+## Filter Strategies (from 82K+ trade analysis)
+| Name      | WR    | Freq   | Logic                                                                  |
+|-----------|-------|--------|------------------------------------------------------------------------|
+| NEW_BEST  | 90.0% | 45/hr  | BUY && midEdge < -0.05 && momentum && secs 90-200 && edgeVsBtc > 0 && 5+15min && BTC/ETH && price >= 0.70 && !deadHours |
+| BALANCED  | 80.8% | 20/hr  | BUY && price 0.50-0.85 && midEdge < -0.05 && momentum && edgeVsBtc > 0 && 5+15min && BTC/ETH && !deadHours |
+| GOLD_PLUS | 80.8% (OG) | ~95/hr | BUY && midEdge < -0.05 && momentum && secs 90-300 && whaleSize >= $10 && 5+15min && BTC/ETH (no edgeVsBtc, no price floor, no dead hours) |
+
+## Dynamic Position Sizing
+- NB: High Conviction ($20) when entry >= 0.80, Standard ($10) otherwise
+- BAL: Flat $10 always (forced via BAL_LIVE_OVERRIDES — no high-conviction tiers)
+- GP: Flat $10 always (OG GOLD: simple and consistent — no high-conviction tiers)
+- Sizes configurable via dashboard settings (BAL and GP force $10/$10)
+
+## Position Stacking
+- NB: Up to 3 entries per conditionId (configurable maxEntriesPerContract)
+- BAL: maxEntriesPerContract = 1 (no stacking — disabled for LIVE safety)
+- GP: maxEntriesPerContract = 1 (no stacking — OG GOLD keeps it simple)
+- Stack only if whale trade size >= $25 (configurable minStackSize)
+- 5-second cooldown between entries on same contract
+- Each stacked entry counts individually toward maxOpenPositions
+
+## Risk Management
+### Shared (PAPER mode)
+- Max Open Positions: 15
+- Max Exposure: $500 (total USD at risk)
+- Max Loss/Hour: $100 (NB), $150 (BAL), $100 (GP) — per-bot overrides in config.ts
+- Max Loss/Session: $200 (NB), $400 (BAL), $200 (GP)
+- Per-contract cooldown: 5000ms
+- BTC + ETH only, BUY side only
+- All bots: 5-min + 15-min contracts (GP upgraded from 5-min only in v9)
+- BAL dead hours skip: 02-05 UTC
+- Excluded wallets (LIVE only): configurable per bot, default 0x37c9 + 0x571c
+
+### BAL LIVE Overrides (conservative, layered on top of shared LIVE_OVERRIDES)
+- maxOpenPositions: 10
+- maxExposureUSD: $200
+- maxLossPerHour: $50
+- maxLossPerSession: $100
+- maxEntriesPerContract: 1 (no stacking)
+- Flat $10 sizing
+
+## LIVE Trading
+- CLOB client: Polymarket ClobClient with signatureType=1 (POLY_PROXY)
+- Orders: FOK (Fill-Or-Kill) at whale price + 0.02 buffer, feeRateBps=1000
+- Auto-fallback: 3 consecutive order failures → automatic PAPER switch
+- Wallet: 0xdb67... (shared between all bots — only one LIVE at a time)
+- BAL LIVE enabled since v8 (was PAPER-only before)
+
+## CSV File Rotation
+- Rotation threshold: 70K lines (changed from 90K in v8)
+- Max archives: 10 per dataset
+- Rotated datasets: decisions, bot_trades, live_events
+- Archives stored in data/archives/ as CSV files with header
+- Rotation check: every 60 seconds + on each append
+
+## Latency Chain (whale trade → bot order)
+- Polymarket API indexing lag: ~2-5s (uncontrollable)
+- Poll interval: 3s per wallet, staggered 750ms (avg 1.5s wait)
+- HTTP request: ~200-500ms
+- Processing (filter + risk + sizing): ~1-5ms
+- LIVE order placement (FOK): ~250-600ms
+- **Total typical: ~5-7s** | Worst case: ~10s+
+- v8 quick wins: non-blocking REST book fetch, latency breakdown logging (detectedAt, apiLag, process)
+
+## SELL Trade Handling
+- Bot only copies BUY trades (SELL excluded by filter)
+- Spy server: SELL trades preserved in CSV but won/pnl columns are empty (not computed)
+- Bot whale CSV export: won/pnl only computed for BUY trades
+- All WR/PnL statistics are BUY-only
+
+## Dashboard Features (bot-dashboard.html)
+- Header: BTC/ETH/SOL/XRP live prices, mode badge, bot ID, excluded wallets badge
+- Stats bar: open positions, win rate, total PnL, today PnL, unrealized P&L, whale trades
+- Contract stats bar: contract WR, Wilson CI, last 20 contracts WR, CUSUM decay indicator
+- LIVE stats bar: LIVE P&L, orders placed/failed, consecutive failures, last order
+- Live Feed tab: whale trade table with filter highlighting, event log, open positions
+- Open Positions: title, asset, wallet, side, entry price, current mid-price, size, unrealized P&L, stack, secs
+- My Positions tab: closed positions with result, PnL, mode badge
+- Analytics tab: cumulative PnL chart, filter pass rates, PnL distribution, sizing distribution
+- Settings tab: mode, sizing, risk limits, stacking, filters, CSV export
+
+## Environment Variables
+- PORT (auto-set by Railway) — HTTP server port, defaults to 4444
+- BOT_AUTH_TOKEN — Fixed auth token, defaults to "7777777lL"
+- BOT_ID — "NEW_BEST", "BALANCED", or "GOLD_PLUS" (defaults to "NEW_BEST")
+- POLYMARKET_PRIVATE_KEY — Wallet private key for LIVE CLOB orders
+- POLYMARKET_FUNDER — Funder address for POLY_PROXY signature type
+- POLYMARKET_API_KEY — CLOB API key (derived from wallet)
+- POLYMARKET_SECRET — CLOB API secret (derived from wallet)
+- POLYMARKET_PASSPHRASE — CLOB API passphrase (derived from wallet)
+
+## Data Recording (per bot trade)
+Each trade records: botId, contractDuration, sizeReason, stackEntry, stackTotal,
+stackTriggerSize, whaleTxHash, latencyMs, binancePrice, polyMidAtDecision, bookSpread,
+btcVol1h, concurrentWhales, sessionLabel, orderBookDepth, whaleUsdcSize, whalePrice,
+btcDelta30s, btcDelta5m, slippage, fillPriceVsMid, confirmed.
+Column `whaleTxHash` is consistent across spy, decisions, and bot_trades CSVs for joins.
+
+## Key Design Decisions
+- Single codebase, three deployments: BOT_ID env var selects active filter
+- midEdge is INVERTED: negative midEdge = whale pays ABOVE mid = high conviction
+- Fresh market data at decision time: polyMidAtDecision and bookSpread read from
+  tokenBook at OUR evaluation time, not the whale's snapshot (3-7s earlier)
+- BTC + ETH only (SOL/XRP = noise per 82K analysis)
+- BUY-only (SELL trades from 0x37c9 have no profit)
+- 5+15 minute contracts (1-min too fast, hourly too slow)
+- Paper mode default — LIVE enabled per bot via dashboard settings
+- Auth token required for all API access and WS connections
+- Binance WS with REST fallback for Railway EU deployment
+- Railway persistent volume at /app/data for trade + settings persistence
+- File rotation: 70K lines → CSV archive, keeps 10 archives per dataset
+- Non-blocking REST book fetch: fire-and-forget to avoid blocking trade pipeline
+- Wallet shared between bots: only one LIVE at a time to avoid position conflicts
+
+## v8 Changes (2026-03-01)
+1. CSV rotation: 90K → 70K lines, live_events now rotates (was never-rotated)
+2. BAL stacking disabled: maxEntriesPerContract=1 (no stacking for LIVE safety)
+3. BAL LIVE enabled: removed PAPER-only enforcement, conservative risk limits
+4. Dashboard: open positions show current mid-price + unrealized P&L, total unrealized in stats bar
+5. Latency: non-blocking REST book fetch, detectedAt timestamp, latency breakdown logging
+6. SELL exclusion: spy + bot no longer compute won/pnl for SELL trades (was misleading)
+7. Live events: archive download endpoint, rotation timer added
+
+## v9 Changes (2026-03-01) — OG GOLD Reincarnation
+1. GP filter: replaced GOLD_PLUS with OG GOLD logic (proven $300 profit in first session)
+   - midEdge < -0.05, momentumAligned, secs 90-300, whaleSize >= $10, BTC/ETH, BUY only
+   - Added 15-min contracts (same 90-300s window — didn't exist in OG)
+   - Removed: edgeVsBtc check, price floor, dead hours skip (keeping it simple)
+2. GP sizing: flat $10 (no high-conviction) — forced on boot like BAL
+3. GP stacking: maxEntriesPerContract = 1 (no stacking)
+4. GP risk: maxExposure=$300, maxLoss/hr=$100, maxLoss/session=$200
+5. GP pre-filter: removed price floor (0.70) — OG GOLD had no price restriction
+6. GP pre-filter: removed dead hours skip — OG GOLD ran 24/7
+7. GP boots in PAPER mode — data collection only alongside BAL's Strategy D
+8. Dashboard wouldPassFilter updated for OG GOLD criteria
+9. Purpose: A/B comparison of OG GOLD (simple, proven) vs Strategy D (complex, higher-edge)
+
+## Notes
+- All three bots run independently — separate volumes, separate settings, separate trade histories
+- The spy server is separate (polymarket-whale-spy project) — no shared state
+- Settings survive restarts via data/settings.json
+- Bot trades persist via data/bot_trades.jsonl with automatic rotation
+- Dashboard uses WebSocket for real-time updates (500ms broadcast)
+- End Session exports CSV then clears disk — clean session boundary
+- NB is currently OFF — BAL is running Strategy D (LIVE), GP is running OG GOLD (PAPER data collection)

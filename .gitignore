@@ -12,3 +12,7 @@ spy/spy-data/*.json
 # Bot data (runtime)
 bot/data/
 bot/dist/
+
+# GP bot OG backup (runtime)
+GP bot OG/data/
+GP bot OG/dist/
