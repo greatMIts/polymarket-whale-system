@@ -1,8 +1,9 @@
 /**
  * whale-watcher.ts — Polls whale wallets and enriches trades with metrics.
  *
- * Emits enriched WhaleTrade objects to registered listeners.
- * Staggered polling (750ms offset per wallet) to avoid rate limits.
+ * Layer 2 — Imports config, market-data, types.
+ * V7.5 changes: duration gate (5m/15m only), contractDuration field,
+ * capped FIFO (200), field renames (wallet→walletAddress, etc.).
  */
 
 import axios from "axios";
@@ -17,39 +18,25 @@ import {
   getContractForAsset,
   fetchBookFromRest,
 } from "./market-data";
+import type { CachedContract } from "./market-data";
 import type { WhaleTrade } from "./types";
 
 // ─── STATE ──────────────────────────────────────────────────────────────────
 
 const seenTxHashes = new Set<string>();
-const tradeListeners: ((trade: WhaleTrade) => void)[] = [];
+const handlers: ((trade: WhaleTrade) => void)[] = [];
 
-// All observed whale trades (in-memory, newest first)
-export const allWhaleTrades: WhaleTrade[] = [];
+// V7.5: Capped FIFO (max 200), newest last
+const recentTrades: WhaleTrade[] = [];
 
 // ─── PUBLIC API ─────────────────────────────────────────────────────────────
 
-export function onWhaleTrade(listener: (trade: WhaleTrade) => void) {
-  tradeListeners.push(listener);
+export function onWhaleTrade(handler: (trade: WhaleTrade) => void) {
+  handlers.push(handler);
 }
 
-export function getRecentWhaleTrades(limit: number = 200): WhaleTrade[] {
-  return allWhaleTrades.slice(0, limit);
-}
-
-export function getTotalWhaleTradeCount(): number {
-  return allWhaleTrades.length;
-}
-
-export function getConcurrentWhales(conditionId: string, currentTs: number): number {
-  const cutoff = currentTs - 60_000;
-  const wallets = new Set<string>();
-  for (const t of allWhaleTrades) {
-    if (t.ts >= cutoff && t.conditionId === conditionId) {
-      wallets.add(t.walletLabel);
-    }
-  }
-  return wallets.size;
+export function getRecentTrades(): readonly WhaleTrade[] {
+  return recentTrades;
 }
 
 // ─── POLL A SINGLE WALLET ───────────────────────────────────────────────────
@@ -88,7 +75,7 @@ async function pollWhale(walletAddress: string, walletLabel: string) {
     // Pre-compute volatility per symbol
     const volCache: Record<string, number | null> = {};
     let newCount = 0;
-    const pollDetectedAt = Date.now(); // timestamp when this poll detected new trades
+    const pollDetectedAt = Date.now();
 
     for (const t of trades) {
       const txHash = t.transactionHash || `${t.timestamp}_${t.asset}`;
@@ -102,20 +89,25 @@ async function pollWhale(walletAddress: string, walletLabel: string) {
       const conditionId = t.conditionId || "";
       const asset = t.asset || "";
       const usdcSize = Number(t.usdcSize || 0);
-      const shares = Number(t.size || 0);
 
       // Contract lookup
-      const contract = marketState.assetToContract.get(asset) || null;
+      const contract: CachedContract | null = marketState.assetToContract.get(asset) || null;
       const now = Date.now();
       const endTs = contract?.endTs || 0;
       const secsRemaining = endTs ? (endTs - now) / 1000 : -1;
 
-      // Contract duration in minutes (0 = unknown/unparseable → will fail 5-min filter)
-      const contractDurationMinutes = contract?.durationMs
-        ? contract.durationMs / 60_000
-        : 0;
+      // ── V7.5 Duration gate: only emit 5m and 15m contracts ──
+      const durationMatch = (contract?.title || "").match(/(\d+)\s*min/i);
+      const durationMin = durationMatch ? parseInt(durationMatch[1]) : null;
+      if (durationMin !== 5 && durationMin !== 15) continue;
 
-      // Detect asset
+      const contractDuration: '5m' | '15m' = durationMin === 5 ? '5m' : '15m';
+
+      // Compute seconds remaining per duration
+      const secsRemaining5m = contractDuration === '5m' ? Math.max(0, secsRemaining) : 0;
+      const secsRemaining15m = contractDuration === '15m' ? Math.max(0, secsRemaining) : 0;
+
+      // Detect asset label
       const sym = contract?.binanceSymbol || "";
       let assetLabel = "";
       if (sym) assetLabel = SYMBOL_DISPLAY[sym] || sym.replace("USDT", "");
@@ -131,91 +123,60 @@ async function pollWhale(walletAddress: string, walletLabel: string) {
         }
       }
 
-      // Black-Scholes edge (per-asset: uses asset's own vol and spot price)
-      let edgeVsSpot: number | null = null;
-      if (contract && sym && contract.strikePrice && secsRemaining > 0) {
-        if (!(sym in volCache)) volCache[sym] = computeRealizedVolatility(sym);
-        const assetVol = volCache[sym];
-        const assetPrice = getPrice(sym);
-        if (assetVol !== null && assetPrice > 0) {
-          const fairValue = computeBinaryFairValue(assetPrice, contract.strikePrice, secsRemaining, assetVol, dir as "UP" | "DOWN");
-          edgeVsSpot = fairValue - price;
-        }
-      }
-
-      // Order book mid — NON-BLOCKING: use WS book if available, kick off REST fetch in background
+      // Order book mid
       let book = marketState.tokenBook.get(asset) || { ask: 0, bid: 0 };
       if ((book.ask === 0 || book.bid === 0) && asset) {
-        // Fire-and-forget: don't block the trade pipeline for REST book data
         fetchBookFromRest(asset).catch(() => {});
       }
       const polyMid = book.ask > 0 && book.bid > 0 ? (book.ask + book.bid) / 2 : 0;
-      const midEdge = polyMid > 0 ? polyMid - price : null;
+      const midEdge = polyMid > 0 ? polyMid - price : 0;
 
       // Per-asset direction & momentum alignment
       const effectiveSym = sym || "BTCUSDT";
       const delta30s = getPriceDelta(effectiveSym, 30);
-      const delta5m = getPriceDelta(effectiveSym, 300);
-      const priceDirection = getAssetDirection(effectiveSym);
 
-      // Momentum: does the whale's bet direction match the asset's 30s price movement?
       let momentumAligned = false;
       if (side === "BUY") {
         if (dir === "UP" && delta30s > 0.02) momentumAligned = true;
         if (dir === "DOWN" && delta30s < -0.02) momentumAligned = true;
       }
 
+      // ── Build V7.5 WhaleTrade (14 fields) ──
       const whaleTrade: WhaleTrade = {
-        id: `whale_${txHash}`,
-        ts: t.timestamp ? t.timestamp * 1000 : now,
-        tsIso: t.timestamp ? new Date(t.timestamp * 1000).toISOString() : new Date().toISOString(),
-        wallet: walletAddress,
-        walletLabel,
-        side,
-        outcome: t.outcome || "?",
-        price,
-        usdcSize,
-        shares,
         conditionId,
-        title: contract?.title || t.title || "",
-        txHash,
         asset,
-        spotPrice: getPrice(effectiveSym),
-        assetPriceAtTrade: sym ? getPrice(sym) : getPrice("BTCUSDT"),
-        delta30s,
-        delta5m,
-        priceDirection,
-        secondsRemainingInContract: secsRemaining,
-        contractDurationMinutes,
-        edgeVsSpot,
-        polyMid,
-        midEdge,
-        binanceSymbol: sym,
         assetLabel: assetLabel || "?",
+        title: contract?.title || t.title || "",
+        side,
+        usdcSize,
+        walletAddress: walletAddress,
+        txHash,
+        midEdge,
         momentumAligned,
+        contractDuration,
+        secsRemaining5m,
+        secsRemaining15m,
         detectedAt: pollDetectedAt,
       };
 
-      allWhaleTrades.unshift(whaleTrade);
-      if (allWhaleTrades.length > 5000) allWhaleTrades.length = 5000;
+      // V7.5: capped FIFO (max 200)
+      recentTrades.push(whaleTrade);
+      if (recentTrades.length > 200) recentTrades.shift();
+
       newCount++;
 
-      // Emit to all listeners (filter engine, persistence, etc.)
-      for (const listener of tradeListeners) {
-        try { listener(whaleTrade); } catch (err: any) {
-          console.error("[whale-watcher] listener error:", err.message);
+      // Emit to all handlers
+      for (const handler of handlers) {
+        try {
+          handler(whaleTrade);
+        } catch (err: any) {
+          console.error("[whale-watcher] handler error:", err.message);
         }
       }
     }
 
     if (newCount > 0) {
-      // Log latency breakdown for detected trades
-      const apiLag = trades
-        .filter((t: any) => t.timestamp && !seenTxHashes.has(t.transactionHash || `${t.timestamp}_${t.asset}`) === false)
-        .map((t: any) => t.timestamp ? pollDetectedAt - t.timestamp * 1000 : 0)
-        .filter((v: number) => v > 0);
-      const avgApiLag = apiLag.length > 0 ? (apiLag.reduce((a: number, b: number) => a + b, 0) / apiLag.length / 1000).toFixed(1) : '?';
-      console.log(`[${walletLabel}] +${newCount} trades | apiLag ~${avgApiLag}s | ${assetPriceSummary()}`);
+      console.log(`[${walletLabel}] +${newCount} trades | ${assetPriceSummary()}`);
     }
   } catch (e: any) {
     clearTimeout(timeout);
@@ -239,7 +200,7 @@ function assetPriceSummary(): string {
 
 // ─── STAGGERED POLLING LOOP ─────────────────────────────────────────────────
 
-export function startPolling() {
+export function start() {
   const staggerMs = Math.floor(CONFIG.pollIntervalMs / CONFIG.wallets.length);
 
   for (let i = 0; i < CONFIG.wallets.length; i++) {
@@ -250,4 +211,3 @@ export function startPolling() {
     console.log(`[boot] polling ${w.label} every ${CONFIG.pollIntervalMs / 1000}s (offset ${i * staggerMs}ms)`);
   }
 }
-

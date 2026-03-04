@@ -1,220 +1,156 @@
 /**
- * types.ts — Shared type definitions for the whale copy-trading bot.
+ * types.ts — All interfaces and type definitions for the V7.5 bot system.
+ *
+ * Layer 0 — Zero imports from bot modules.
+ * Every interface used across modules is defined here.
  */
 
-import type { FilterPresetName } from "./config";
+// ── Bot Identity ──
+export type FilterPresetName = 'BALANCED' | 'GOLD_PLUS' | 'NEW_BEST';
 
-// ─── Whale Trade (observed from spy data) ───────────────────────────────────
-
-export interface WhaleTrade {
-  id: string;
-  ts: number;             // unix ms
-  tsIso: string;
-  wallet: string;         // full address
-  walletLabel: string;    // short label e.g. "0x63ce"
-  side: "BUY" | "SELL";
-  outcome: string;        // "Up" | "Down"
-  price: number;
-  usdcSize: number;
-  shares: number;
-  conditionId: string;
-  title: string;
-  txHash: string;
-  asset: string;          // CLOB token ID
-  // Enriched
-  spotPrice: number;              // asset's Binance price at trade time (was btcPriceAtTrade)
-  assetPriceAtTrade: number;
-  delta30s: number;               // 30s price delta for the trade's asset (was btcDelta30s)
-  delta5m: number;                // 5-min price delta for the trade's asset (was btcDelta5m)
-  priceDirection: "UP" | "DOWN" | "FLAT";  // asset direction (was btcDirection)
-  secondsRemainingInContract: number;
-  contractDurationMinutes: number;  // parsed from title, 0 if unknown
-  edgeVsSpot: number | null;       // BS fair value edge (was edgeVsBtc)
-  polyMid: number;
-  midEdge: number | null;     // polyMid - price (null if polyMid unavailable)
-  binanceSymbol: string;      // e.g. "BTCUSDT"
-  assetLabel: string;         // e.g. "BTC"
-  momentumAligned: boolean;   // whale bet matches 30s price direction
-  detectedAt?: number;        // unix ms when bot first detected this trade (for latency tracking)
+// ── Wallet Info ──
+export interface WalletInfo {
+  label: string;
+  shortAddress: string;
 }
 
-// ─── Contract Cache ─────────────────────────────────────────────────────────
-
-export interface CachedContract {
-  conditionId: string;
-  title: string;
-  startTs: number;
-  endTs: number;
-  windowStartTs: number;
-  durationMs: number;
-  clobTokenIds: string[];
-  fetchedAt: number;
-  binanceSymbol: string;
-  strikePrice: number | null;
-  negRisk: boolean;
-}
-
-// ─── Bot Trade (our copy trade) ─────────────────────────────────────────────
-
-export interface BotTrade {
-  id: string;
-  ts: number;
-  tsIso: string;
-  // Source whale trade that triggered this
-  whaleTradeId: string;
-  walletLabel: string;
-  // What we're copying
-  conditionId: string;
-  title: string;
-  side: "BUY" | "SELL";
-  outcome: string;
-  // Our execution
-  entryPrice: number;        // price we got (paper: whale price; live: actual fill)
-  sizeUsdc: number;          // how much we risked
-  shares: number;            // sizeUsdc / entryPrice
-  asset: string;             // CLOB token ID
-  // Filter that passed
-  filterPreset: FilterPresetName;
-  // Metrics at entry
-  midEdge: number | null;
-  edgeVsSpot: number | null;       // BS fair value edge (was edgeVsBtc)
-  momentumAligned: boolean;
-  secsRemaining: number;
-  assetLabel: string;
-  // New data columns
-  botId: FilterPresetName;          // which bot made this trade
-  contractDuration: number;         // in minutes (5 for 5-min)
-  sizeReason: string;               // "STANDARD" or "HIGH_CONVICTION (price X >= 0.80)"
-  stackEntry: number;               // which entry on this contract (1, 2, or 3)
-  stackTotal: number;               // total entries at time of this trade
-  stackTriggerSize: number;         // whale usdcSize that triggered this stack
-  whaleTxHash: string;              // the whale's transaction hash
-  latencyMs: number;                // ms from whale trade to our copy
-  spotPrice: number;                // asset Binance price at decision time (was binancePrice)
-  polyMidAtDecision: number;        // order book mid at OUR decision time (fresh, not whale's)
-  bookSpread: number;               // ask - bid at decision time (fresh)
-  // Statistical columns
-  slippage: number;                  // 0 in PAPER mode; clobFillPrice - whalePrice in LIVE
-  fillPriceVsMid: number | null;     // entryPrice - polyMidAtDecision (null if mid unavailable)
-  vol1h: number;                     // rolling stdev of delta30s over last hour, per-asset (was btcVol1h)
-  concurrentWhales: number;          // distinct wallets on same conditionId in last 60s
-  sessionLabel: string;              // ASIA, EUROPE, US, LATE_US
-  orderBookDepth: number;            // total USDC within 5 cents of mid, -1 if unavailable
-  // Resolution
-  resolution: string | null;  // "Up" | "Down" | null
-  won: boolean | null;
-  pnl: number | null;        // in USD
-  exitPrice: number | null;   // 1 if won, 0 if lost (binary)
-  resolvedAt: number | null;
-  // Status
-  status: "OPEN" | "WON" | "LOST" | "EXPIRED";
-  mode: "PAPER" | "LIVE";
-  // LIVE order confirmation — FOK filled = true, PAPER always true
-  confirmed: boolean;
-  // Whale context columns (for analysis — whale's raw signals at copy time)
-  whaleUsdcSize: number;         // whale's original bet size (conviction signal)
-  whalePrice: number;            // whale's entry price (for slippage calc: entryPrice - whalePrice)
-  delta30s: number;              // raw 30s asset momentum at decision time (was btcDelta30s)
-  delta5m: number;               // raw 5-min asset momentum at decision time (was btcDelta5m)
-}
-
-// ─── MidEdge Range (v10.2 — range-based midEdge filter) ─────────────────────
-
+// ── Settings ──
 export interface MidEdgeRange {
-  operator: "lt" | "gt" | "lte" | "gte" | "between";
-  value: number;       // threshold for lt/gt/lte/gte
-  min?: number;        // for "between"
-  max?: number;        // for "between"
+  operator: 'lt' | 'gt' | 'lte' | 'gte';
+  value: number;
 }
-
-// ─── Settings (persisted) ───────────────────────────────────────────────────
 
 export interface BotSettings {
   mode: "PAPER" | "LIVE";
-  activeFilter: FilterPresetName;
-  // Dynamic sizing
-  highConvictionSize: number;        // $30 when entry >= threshold
-  lowConvictionSize: number;         // $10 when entry < threshold
-  highConvictionThreshold: number;   // 0.80
-  // Risk limits
+  botEnabled: boolean;
+  takeProfitEnabled: boolean;
+  takeProfitPrice: number;
+  standardSize: number;               // USDC to spend per standard trade (dashboard: "Bet Size")
+  highConvictionSize: number;          // USDC to spend per HC trade (dashboard: "HC Bet")
+  highConvictionThreshold: number;
   maxOpenPositions: number;
   maxExposureUSD: number;
   maxLossPerHour: number;
   maxLossPerSession: number;
-  // Stacking
-  maxEntriesPerContract: number;     // up to 3 entries per conditionId
-  minStackSize: number;              // whale must trade >= $25 to stack
-  // Filters
+  cooldownMs: number;
+  maxEntriesPerContract: number;
+  minStackSize: number;
+  priceFloor: number;
+  priceCeiling: number;
+  midEdgeRanges: MidEdgeRange[];
+  edgeVsSpotEnabled: boolean;
+  edgeVsSpotThreshold: number;
+  edgeVsSpotCeiling: number;
+  momentumRequired: boolean;
+  whaleSizeGate: number;
+  secsRanges5m: number[][];
+  secsRanges15m: number[][];
+  inactiveHoursUTC: [number, number];
   allowedAssets: string[];
   allowedSides: ("BUY" | "SELL")[];
-  cooldownMs: number;
-  botEnabled: boolean;
-  // Wallet inclusion (LIVE mode only — PAPER still tracks all wallets)
-  // Checked wallets = copy from; unchecked = skip in LIVE mode
   enabledWallets: string[];
-  // Filter parameters (v10 — unified filter, dashboard-controllable)
-  standardSize: number;               // $10 default — bet size for BAL/GP
-  priceFloor: number;                 // 0.50 BAL/GP, 0.70 NB
-  priceCeiling: number;               // 0.85 all bots default (>=1.0 via dashboard = no ceiling check)
-  midEdgeRanges: MidEdgeRange[];      // replaces midEdgeThreshold — range-based
-  edgeVsSpotEnabled: boolean;         // true NB/BAL, false GP
-  edgeVsSpotThreshold: number;        // 0.0
-  momentumRequired: boolean;          // true
-  whaleSizeGate: number;              // 10 BAL/GP, 0 NB
-  secsRanges5m: number[][];           // [[90,200]] BAL/NB, [[90,300]] GP — discontinuous windows
-  secsRanges15m: number[][];          // [[90,300]] all
-  // Take profit
-  takeProfitEnabled: boolean;
-  takeProfitPrice: number;
 }
 
-// ─── Dashboard State ────────────────────────────────────────────────────────
-
-export interface DashboardState {
-  // Bot identity
-  botId: FilterPresetName;
-
-  // Live prices
-  prices: Record<string, number>;  // "BTCUSDT" → price
-  delta30s: number;
-  delta5m: number;
-  priceDirection: "UP" | "DOWN" | "FLAT";
-
-  // Recent whale trades (last 200)
-  recentWhaleTrades: WhaleTrade[];
-
-  // Bot trades
-  openPositions: BotTrade[];
-  closedPositions: BotTrade[];
-
-  // Stats
-  stats: BotStats;
-
-  // Settings
-  settings: BotSettings;
-
-  // Filter metadata
-  filterStats: Record<FilterPresetName, { passed: number; total: number }>;
-
-  // System
-  totalWhaleTrades: number;
-  uptime: number;
-  subscribedTokens: number;
-  contractsCached: number;
+// ── Trade Signal ──
+export interface TradeSignal {
+  conditionId: string;
+  asset: string;                       // CLOB token ID (for order placement)
+  assetLabel: string;                  // V7.5 C1: human label ("BTC"/"ETH") — for filter + Binance price
+  side: 'BUY' | 'SELL';
+  entryPrice: number;
+  edge: number;
+  midEdge: number;
+  whaleSize: number;
+  walletAddress: string;
+  contractDuration: '5m' | '15m';
+  secsRemaining5m: number;
+  secsRemaining15m: number;
+  momentum: boolean;
 }
 
-export interface BotStats {
-  totalCopyTrades: number;
-  openPositions: number;
-  wins: number;
-  losses: number;
-  winRate: number;
-  totalPnl: number;
-  todayPnl: number;
-  todayTrades: number;
-  bestTrade: number;
-  worstTrade: number;
-  avgPnlPerTrade: number;
-  tradesPassedFilter: number;
-  tradesRejectedByRisk: number;
+export interface FilterResult {
+  pass: boolean;
+  reason?: string;
+}
+
+// ── Orders ──
+// V7.4 M1+M2+S1: tokenId + negRisk + corrected size docs
+export interface SellOrder {
+  tokenId: string;                     // V7.4 M1: CLOB token ID (not conditionId)
+  side: 'SELL' | 'BUY';               // BUY allowed (closing SELL positions via TP)
+  size: number;                        // V7.4 S1: SELL = token count, BUY = USDC. Caller converts.
+  price: number;
+  negRisk: boolean;                    // V7.4 M2: required by CLOB SDK
+  timeout: number;
+}
+
+export interface SellResult {
+  status: 'FILLED' | 'FAILED' | 'TIMEOUT';
+  fillPrice?: number;
+  fillSize?: number;                   // Mirrors SellOrder.size unit per side
+  reason?: string;
+}
+
+// ── Trades ──
+export interface BotTrade {
+  id: string;
+  conditionId: string;                               // Market condition ID (for resolution, tracking)
+  asset: string;                                     // CLOB token ID (for TP CLOB calls)
+  assetLabel: string;
+  title: string;
+  side: 'BUY' | 'SELL';
+  entryPrice: number;
+  size: number;                                      // USDC spent — "bet size" (shares = size / entryPrice)
+  shares: number;                                    // Token count received = size / entryPrice
+  status: 'OPEN' | 'WON' | 'LOST' | 'TP_FILLED' | 'EXPIRED';
+  pnl?: number;
+  exitPrice?: number;
+  resolvedAt?: number;
+  resolutionSource?: 'GAMMA' | 'STALE_FALLBACK' | 'TAKE_PROFIT' | 'EXPIRED';
+  createdAt: number;
+  mode: 'PAPER' | 'LIVE';
+  walletAddress: string;
+  whaleSize: number;
+  negRisk: boolean;                                  // V7.4 M2: stored at creation for TP reuse
+  // Analytics (11 fields including negRisk)
+  latencyMs: number;
+  polyMidAtDecision: number;
+  bookSpread: number;
+  sizeReason: 'STANDARD' | 'HIGH_CONVICTION';
+  stackEntry: number;
+  contractDuration: '5m' | '15m';
+  filterPreset: FilterPresetName;
+  whaleTxHash: string;
+  midEdge: number;
+}
+
+export interface Decision {
+  conditionId: string;
+  asset: string;
+  side: 'BUY' | 'SELL';
+  reason: string;
+  timestamp: number;
+}
+
+export interface ContractOutcome {
+  resolved: boolean;
+  outcome: 'YES' | 'NO';
+  resolvedAt: number;
+}
+
+export interface WhaleTrade {
+  conditionId: string;
+  asset: string;                      // CLOB token ID
+  assetLabel: string;
+  title: string;
+  side: 'BUY' | 'SELL';
+  usdcSize: number;
+  walletAddress: string;
+  txHash: string;
+  midEdge: number;
+  momentumAligned: boolean;
+  contractDuration: '5m' | '15m';
+  secsRemaining5m: number;
+  secsRemaining15m: number;
+  detectedAt: number;
 }

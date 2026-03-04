@@ -2,10 +2,10 @@
   "name": "polymarket-whale-bot",
   "version": "1.0.0",
   "description": "Polymarket whale copy-trading bot with validated filter presets",
-  "main": "src/bot-server.ts",
+  "main": "src/index.ts",
   "scripts": {
-    "start": "npx ts-node src/bot-server.ts",
-    "dev": "npx ts-node --respawn src/bot-server.ts"
+    "start": "npx ts-node src/index.ts",
+    "dev": "npx ts-node --respawn src/index.ts"
   },
   "dependencies": {
     "@polymarket/clob-client": "^5.3.0",

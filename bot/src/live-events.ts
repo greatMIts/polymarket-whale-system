@@ -16,7 +16,7 @@ import * as fs from "fs";
 import { CONFIG, FILE_PREFIX } from "./config";
 import { trackAppend, type RotationConfig } from "./file-rotation";
 
-const liveEventsPath = CONFIG.liveEventsFile;
+const liveEventsPath = `${CONFIG.dataDir}/${FILE_PREFIX}-live-events.jsonl`;
 
 // CSV header for live events archive
 const LIVE_EVENTS_CSV_HEADER = "ts,event,orderID,orderType,tokenID,conditionId,side," +

@@ -12,8 +12,23 @@
 
 import { WebSocket } from "ws";
 import axios from "axios";
-import { CONFIG, ASSET_MAP } from "./config";
-import type { CachedContract } from "./types";
+import { CONFIG, ASSET_MAP, LABEL_TO_SYMBOL } from "./config";
+import type { ContractOutcome } from "./types";
+
+// ── CachedContract (local to market-data, exported for whale-watcher) ──
+export interface CachedContract {
+  conditionId: string;
+  title: string;
+  startTs: number;
+  endTs: number;
+  windowStartTs: number;
+  durationMs: number;
+  clobTokenIds: string[];
+  fetchedAt: number;
+  binanceSymbol: string;
+  strikePrice: number | null;
+  negRisk: boolean;
+}
 
 // ─── STATE ──────────────────────────────────────────────────────────────────
 
@@ -41,6 +56,12 @@ export const marketState = {
   // Full order book levels: tokenId → { asks, bids } for depth calculation
   tokenBookLevels: new Map<string, { asks: { price: number; size: number }[]; bids: { price: number; size: number }[] }>(),
 };
+
+// ── Per-token book update timestamps (V7.5: getBook lastUpdateTs) ──
+const tokenBookUpdateTs = new Map<string, number>();
+
+// ── V7.5 Resolution cache: conditionId → ContractOutcome ──
+const v75ResolutionCache = new Map<string, ContractOutcome>();
 
 // ─── BINANCE COMBINED STREAM ────────────────────────────────────────────────
 
@@ -446,6 +467,7 @@ export function connectPolymarketWs() {
         }
 
         marketState.tokenBook.set(tokenId, { ask: bestAsk, bid: bestBid });
+        tokenBookUpdateTs.set(tokenId, Date.now());
         marketState.tokenBookLevels.set(tokenId, existingLevels);
       }
     } catch {}
@@ -511,6 +533,7 @@ export async function fetchBookFromRest(tokenId: string): Promise<{ ask: number;
         bid: bestBid > 0 ? bestBid : existing.bid,
       };
       marketState.tokenBook.set(tokenId, merged);
+      tokenBookUpdateTs.set(tokenId, Date.now());
       // Store full levels for depth calculation
       marketState.tokenBookLevels.set(tokenId, {
         asks: asks.map((a: any) => ({ price: parseFloat(a.price), size: parseFloat(a.size) })),
@@ -782,6 +805,12 @@ export async function checkResolutions() {
       const winIdx = prices.indexOf("1");
       if (winIdx >= 0 && outcomes[winIdx]) {
         resolutionCache.set(condId, outcomes[winIdx]);
+        // V7.5: outcome index 0 = YES token, index 1 = NO token
+        v75ResolutionCache.set(condId, {
+          resolved: true,
+          outcome: winIdx === 0 ? 'YES' : 'NO',
+          resolvedAt: Date.now(),
+        });
         newResolutions++;
         continue;
       }
@@ -792,6 +821,12 @@ export async function checkResolutions() {
         const idx = prices.findIndex((p: string) => Number(p) > 0.95);
         if (idx >= 0 && outcomes[idx]) {
           resolutionCache.set(condId, outcomes[idx]);
+          // V7.5: outcome index 0 = YES token, index 1 = NO token
+          v75ResolutionCache.set(condId, {
+            resolved: true,
+            outcome: idx === 0 ? 'YES' : 'NO',
+            resolvedAt: Date.now(),
+          });
           newResolutions++;
         }
       }
@@ -804,3 +839,79 @@ export async function checkResolutions() {
     console.log(`[resolution] ${newResolutions} new, total: ${resolutionCache.size}`);
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// V7.5 NEW EXPORTS — Standardized interface for the rewritten bot system
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * V7.5 C1: Get Binance spot price by human-readable asset label.
+ * Maps label ("BTC") to Binance symbol ("BTCUSDT") via LABEL_TO_SYMBOL.
+ * Returns 0 if label not recognized or no price data.
+ */
+export function getBinancePrice(assetLabel: string): number {
+  const symbol = LABEL_TO_SYMBOL[assetLabel];
+  if (!symbol) return 0;
+  return marketState.assetPrices[symbol]?.price || 0;
+}
+
+/**
+ * Get all Binance prices keyed by symbol (e.g. { BTCUSDT: 97000, ETHUSDT: 3500 }).
+ */
+export function getBinancePrices(): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const [sym, bucket] of Object.entries(marketState.assetPrices)) {
+    if (bucket.price > 0) result[sym] = bucket.price;
+  }
+  return result;
+}
+
+/**
+ * V7.5: Get order book data for a specific token.
+ * Returns { bestBid, bestAsk, mid, lastUpdateTs }.
+ * Returns zeros when tokenId not found.
+ */
+export function getBook(tokenId: string): { bestBid: number; bestAsk: number; mid: number; lastUpdateTs: number } {
+  const book = marketState.tokenBook.get(tokenId) || { ask: 0, bid: 0 };
+  const lastUpdateTs = tokenBookUpdateTs.get(tokenId) || 0;
+  const bestBid = book.bid;
+  const bestAsk = book.ask;
+  const mid = bestBid > 0 && bestAsk > 0 ? (bestBid + bestAsk) / 2 : 0;
+  return { bestBid, bestAsk, mid, lastUpdateTs };
+}
+
+/**
+ * V7.5: Get contract metadata for a conditionId.
+ * V7.4 M2: includes negRisk.
+ */
+export function getContractMeta(conditionId: string): { endTime: number; duration: number; negRisk: boolean } | null {
+  const contract = marketState.contractCache.get(conditionId);
+  if (!contract) return null;
+  return {
+    endTime: contract.endTs,
+    duration: contract.durationMs,
+    negRisk: contract.negRisk,
+  };
+}
+
+/**
+ * V7.5: Get the resolution cache (conditionId → ContractOutcome).
+ */
+export function getResolutionCache(): Map<string, ContractOutcome> {
+  return v75ResolutionCache;
+}
+
+/**
+ * V7.5: Combined connect function — starts both Binance and Polymarket WS.
+ */
+export async function connect(): Promise<void> {
+  connectBinance();
+  connectPolymarketWs();
+  startBinanceWatchdog();
+  startVolSamplers();
+}
+
+// ── V7.5 Aliases for index.ts interval wiring ──
+export const pollResolutions = checkResolutions;
+export const proactiveScan = proactiveContractScan;
+export const refreshEmpty = refreshEmptyBooks;
