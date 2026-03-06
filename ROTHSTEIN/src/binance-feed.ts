@@ -23,6 +23,23 @@ const HISTORY_MAX_MS = 600_000;  // 10 minutes
 let restFallbackTimer: NodeJS.Timeout | null = null;
 let _ready = false;
 
+// Alternate Binance endpoints for geo-restriction failover
+const WS_ENDPOINTS = [
+  CONFIG.binanceWsUrl,
+  "wss://data-stream.binance.vision/stream?streams=btcusdt@trade/ethusdt@trade",
+  "wss://stream.binance.com:443/stream?streams=btcusdt@trade/ethusdt@trade",
+];
+const REST_ENDPOINTS = [
+  "https://api.binance.com/api/v3/ticker/price",
+  "https://data-api.binance.vision/api/v3/ticker/price",
+  "https://api1.binance.com/api/v3/ticker/price",
+  "https://api2.binance.com/api/v3/ticker/price",
+  "https://api3.binance.com/api/v3/ticker/price",
+  "https://api4.binance.com/api/v3/ticker/price",
+];
+let wsEndpointIdx = 0;
+let restEndpointIdx = 0;
+
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 const symbolMap: Record<Asset, string> = { BTC: "BTCUSDT", ETH: "ETHUSDT" };
@@ -80,7 +97,9 @@ export function connect(): void {
     try { ws.terminate(); } catch {}
   }
 
-  ws = new WebSocket(CONFIG.binanceWsUrl);
+  const endpoint = WS_ENDPOINTS[wsEndpointIdx % WS_ENDPOINTS.length];
+  logger.info("binance", `Connecting to ${endpoint.split("?")[0]}...`);
+  ws = new WebSocket(endpoint);
 
   ws.on("open", () => {
     logger.info("binance", "WS connected (BTC + ETH)");
@@ -133,6 +152,9 @@ export function connect(): void {
 }
 
 function scheduleReconnect(): void {
+  // Cycle to next endpoint on repeated failures
+  wsEndpointIdx++;
+  if (wsEndpointIdx >= WS_ENDPOINTS.length) wsEndpointIdx = 0;
   setTimeout(() => connect(), reconnectMs);
   reconnectMs = Math.min(reconnectMs * 2, MAX_RECONNECT_MS);  // exponential backoff
 }
@@ -145,7 +167,8 @@ function startRestFallback(): void {
   logger.warn("binance", "Starting REST price fallback");
   restFallbackTimer = setInterval(async () => {
     try {
-      const { data } = await axios.get("https://api.binance.com/api/v3/ticker/price", {
+      const restUrl = REST_ENDPOINTS[restEndpointIdx % REST_ENDPOINTS.length];
+      const { data } = await axios.get(restUrl, {
         params: { symbols: '["BTCUSDT","ETHUSDT"]' },
         timeout: 3000,
       });
@@ -164,7 +187,8 @@ function startRestFallback(): void {
         logger.event("binance", "READY_VIA_REST");
       }
     } catch (e: any) {
-      logger.error("binance", `REST fallback failed: ${e.message}`);
+      restEndpointIdx++;  // cycle to next REST endpoint
+      logger.error("binance", `REST fallback failed (trying next endpoint): ${e.message}`);
     }
   }, 5_000);
 }
