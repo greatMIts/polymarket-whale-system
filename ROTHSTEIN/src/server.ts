@@ -237,6 +237,9 @@ export function start(): void {
       if (b.maxTotalAtRisk !== undefined) updates.maxTotalAtRisk = Math.max(5, Math.min(500, Number(b.maxTotalAtRisk)));
       if (b.consecutiveLossThrottle !== undefined) updates.consecutiveLossThrottle = Math.max(1, Math.min(20, Number(b.consecutiveLossThrottle)));
 
+      // Sizing
+      if (b.betSizeUsdc !== undefined) updates.betSizeUsdc = Math.max(1, Math.min(1000, Number(b.betSizeUsdc)));
+
       // Conditional TP
       if (b.conditionalTpMinPrice !== undefined) updates.conditionalTpMinPrice = Math.max(0.5, Math.min(0.99, Number(b.conditionalTpMinPrice)));
       if (b.conditionalTpEdgeThreshold !== undefined) updates.conditionalTpEdgeThreshold = Math.max(-0.5, Math.min(0.5, Number(b.conditionalTpEdgeThreshold)));
@@ -363,6 +366,19 @@ export function start(): void {
         return { name: f, size: stat.size, modified: stat.mtime.toISOString() };
       });
       res.json({ archives, dataDir: CONFIG.dataDir });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Download a specific archive file
+  app.get("/api/archives/:filename", (req, res) => {
+    try {
+      const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, ""); // sanitize
+      const filePath = path.join(CONFIG.dataDir, "archives", filename);
+      if (!fs.existsSync(filePath)) { res.status(404).json({ error: "Archive not found" }); return; }
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.sendFile(path.resolve(filePath));
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

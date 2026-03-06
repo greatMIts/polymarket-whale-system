@@ -469,13 +469,16 @@
           <label>Max Positions:</label>
           <input type="number" class="config-input" id="cfgMaxPos" value="5" min="1" max="20" step="1" onchange="saveSettings()">
         </div>
-        <div style="margin-top:16px">
-          <div class="section-label">Sizing Tiers (read-only)</div>
-          <div style="font-size:11px;color:var(--dim);line-height:1.6">
-            Score ≥90 → $20 &nbsp;|&nbsp; ≥80 → $15<br>
-            Score ≥70 → $10 &nbsp;|&nbsp; ≥60 → $5<br>
-            Score ≥50 → $2 (shadow only)
-          </div>
+        <div style="margin-top:12px">
+          <div class="section-label">Trade Sizing</div>
+        </div>
+        <div class="config-row">
+          <label>Bet Size (USDC):</label>
+          <input type="number" class="config-input" id="cfgBetSize" value="10" min="1" max="1000" step="1" onchange="saveSettings()">
+        </div>
+        <div style="font-size:10px;color:var(--dim);line-height:1.5">
+          Total USDC spent per trade.<br>
+          At entry 0.55 → buys 18 shares ($9.90)
         </div>
       </div>
     </div>
@@ -718,6 +721,7 @@ function syncConfigInputs(cfg) {
   safeSet('cfgMinScore', cfg.minTradeScore);
   safeSet('cfgSizing', cfg.sizingMultiplier);
   safeSet('cfgMaxPos', cfg.maxConcurrentPositions);
+  safeSet('cfgBetSize', cfg.betSizeUsdc);
   safeSet('cfgMaxRisk', cfg.maxTotalAtRisk);
   safeSet('cfgConsecLoss', cfg.consecutiveLossThrottle);
   safeSet('cfgTpMinPrice', cfg.conditionalTpMinPrice);
@@ -738,6 +742,7 @@ function saveSettings() {
       minTradeScore: parseInt(document.getElementById('cfgMinScore').value),
       sizingMultiplier: parseFloat(document.getElementById('cfgSizing').value),
       maxConcurrentPositions: parseInt(document.getElementById('cfgMaxPos').value),
+      betSizeUsdc: parseFloat(document.getElementById('cfgBetSize').value),
       maxTotalAtRisk: parseFloat(document.getElementById('cfgMaxRisk').value),
       consecutiveLossThrottle: parseInt(document.getElementById('cfgConsecLoss').value),
       conditionalTpMinPrice: parseFloat(document.getElementById('cfgTpMinPrice').value),

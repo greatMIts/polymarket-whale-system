@@ -54,9 +54,9 @@ export async function executeTrade(
     return null;
   }
 
-  // 4. Compute final size with risk multiplier
+  // 4. Compute final size: fixed bet size from settings × risk multiplier
   const effectiveMultiplier = risk.getEffectiveSizingMultiplier();
-  const sizeUsd = Math.max(1, Math.round(scoring.suggestedSize * effectiveMultiplier * 100) / 100);
+  const sizeUsd = Math.max(1, Math.round(runtime.betSizeUsdc * effectiveMultiplier * 100) / 100);
 
   // 5. Total risk check
   const shares = pnl.computeShares(sizeUsd, features.entryPrice);

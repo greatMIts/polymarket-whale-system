@@ -252,6 +252,9 @@ export interface RuntimeConfig {
   maxTotalAtRisk: number;      // default 50
   consecutiveLossThrottle: number;  // default 5
 
+  // Sizing
+  betSizeUsdc: number;             // fixed USDC per trade (default 10)
+
   // Conditional TP
   conditionalTpMinPrice: number;    // default 0.85
   conditionalTpEdgeThreshold: number;  // default 0

@@ -138,6 +138,9 @@ const DEFAULT_RUNTIME: RuntimeConfig = {
   maxTotalAtRisk: CONFIG.maxTotalAtRisk,
   consecutiveLossThrottle: CONFIG.consecutiveLossThrottle,
 
+  // Sizing
+  betSizeUsdc: 10,                  // fixed USDC per trade
+
   // Conditional TP
   conditionalTpMinPrice: CONFIG.conditionalTpMinPrice,
   conditionalTpEdgeThreshold: CONFIG.conditionalTpEdgeThreshold,
