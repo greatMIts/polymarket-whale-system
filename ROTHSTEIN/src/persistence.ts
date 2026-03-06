@@ -82,10 +82,33 @@ export function readJsonl<T>(filename: string): T[] {
   try {
     const content = fs.readFileSync(filePath, "utf8");
     const lines = content.split("\n").filter(l => l.trim());
+
+    // Sync lineCounters with actual file length (fixes counter reset on restart)
+    lineCounters.set(filename, lines.length);
+
     return lines.map(l => JSON.parse(l) as T);
   } catch (e: any) {
     logger.error("persistence", `Failed to read ${filename}: ${e.message}`);
     return [];
+  }
+}
+
+/**
+ * Initialize line counters for existing files at startup.
+ * Call this after ensureDataDir() to avoid unbounded file growth after restart.
+ */
+export function initLineCounters(): void {
+  const filesToTrack = [CONFIG.positionsFile, CONFIG.decisionsFile];
+  for (const filename of filesToTrack) {
+    const filePath = path.resolve(CONFIG.dataDir, filename);
+    if (fs.existsSync(filePath)) {
+      try {
+        const content = fs.readFileSync(filePath, "utf8");
+        const count = content.split("\n").filter(l => l.trim()).length;
+        lineCounters.set(filename, count);
+        logger.info("persistence", `Line counter for ${filename}: ${count}`);
+      } catch {}
+    }
   }
 }
 

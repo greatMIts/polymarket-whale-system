@@ -100,7 +100,19 @@ export function getRecentDecisions(limit?: number): DecisionLogEntry[] {
 }
 
 // ─── Load decisions from disk (crash recovery) ─────────────────────────────
+// Populates recentDecisions in-memory buffer so dashboard shows history on restart.
 
-export function loadDecisionsFromDisk(): DecisionLogEntry[] {
-  return readJsonl<DecisionLogEntry>(CONFIG.decisionsFile);
+export function loadDecisionsFromDisk(): void {
+  const entries = readJsonl<any>(CONFIG.decisionsFile);
+  // Filter to only actual decision entries (skip RESOLUTION events)
+  const decisions = entries.filter((e: any) => e.ts && e.conditionId && e.score !== undefined && !e.type);
+  // Take the last MAX_RECENT entries
+  const recent = decisions.slice(-MAX_RECENT);
+  recentDecisions.push(...recent);
+  if (recentDecisions.length > MAX_RECENT) {
+    recentDecisions.splice(0, recentDecisions.length - MAX_RECENT);
+  }
+  if (recent.length > 0) {
+    logger.info("decisions", `Loaded ${recent.length} recent decisions from disk`);
+  }
 }

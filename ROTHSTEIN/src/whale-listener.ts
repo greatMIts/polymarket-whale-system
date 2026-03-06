@@ -25,6 +25,22 @@ export function getWhaleActivity(conditionId: string): WhaleSignal[] {
   return signals.filter(s => s.ts > cutoff);
 }
 
+/**
+ * Get all recent whale activity across all contracts (for dashboard display).
+ * Returns up to `limit` most recent signals, sorted newest first.
+ */
+export function getAllRecentActivity(limit: number = 50): WhaleSignal[] {
+  const cutoff = Date.now() - CONFIG.whaleSignalExpireMs;
+  const all: WhaleSignal[] = [];
+  for (const signals of recentWhales.values()) {
+    for (const s of signals) {
+      if (s.ts > cutoff) all.push(s);
+    }
+  }
+  all.sort((a, b) => b.ts - a.ts);
+  return all.slice(0, limit);
+}
+
 export function isConnected(): boolean { return connected; }
 export function getLastHeartbeat(): number { return lastMessage; }
 

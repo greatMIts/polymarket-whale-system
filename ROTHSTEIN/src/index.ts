@@ -5,7 +5,7 @@
 
 import { CONFIG, startConfigWatcher, stopConfigWatcher } from "./config";
 import { logger } from "./logger";
-import { ensureDataDir } from "./persistence";
+import { ensureDataDir, initLineCounters } from "./persistence";
 import * as binance from "./binance-feed";
 import * as polyBook from "./polymarket-book";
 import * as contractScanner from "./contract-scanner";
@@ -13,6 +13,7 @@ import * as whales from "./whale-listener";
 import * as positions from "./positions";
 import * as scanner from "./scanner";
 import * as server from "./server";
+import { loadDecisionsFromDisk } from "./decisions-log";
 
 // ─── Boot ──────────────────────────────────────────────────────────────────
 
@@ -35,14 +36,16 @@ async function boot(): Promise<void> {
   // Step 3: Data directory + persistence
   logger.info("boot", "Step 3/12: Ensuring data directory...");
   ensureDataDir();
+  initLineCounters();  // Sync line counters with existing file sizes (prevents unbounded growth)
 
   // Step 4: Hot-reloadable config
   logger.info("boot", "Step 4/12: Loading runtime config...");
   startConfigWatcher();
 
-  // Step 5: Crash recovery — restore open positions
+  // Step 5: Crash recovery — restore open positions + decisions
   logger.info("boot", "Step 5/12: Crash recovery...");
   positions.loadFromDisk();
+  loadDecisionsFromDisk();  // Load recent decisions into memory for dashboard + backfill
 
   // Step 6: Connect Binance WS
   logger.info("boot", "Step 6/12: Connecting to Binance...");

@@ -588,11 +588,16 @@ function updateDashboard(s) {
   document.getElementById('statDrawdown').textContent = '-$' + (st.maxDrawdown || 0).toFixed(2);
   document.getElementById('statStreak').textContent = st.consecutiveLosses || 0;
 
-  // Paused banner
-  const paused = s.deadHours && s.deadHours.includes(new Date().getUTCHours());
-  // Check if manually paused via config (we infer from circuit breaker or check the response)
-  document.getElementById('pausedBanner').className = 'paused-banner' + (paused ? ' show' : '');
-  if (paused) document.getElementById('pausedBanner').textContent = '⛔ DEAD HOUR — Trading suspended (UTC ' + new Date().getUTCHours() + ':00)';
+  // Paused banner — check BOTH dead hours and manual pause
+  const isDeadHour = s.deadHours && s.deadHours.includes(new Date().getUTCHours());
+  const isManualPaused = s.paused === true;  // from runtime config payload
+  const showPaused = isDeadHour || isManualPaused;
+  document.getElementById('pausedBanner').className = 'paused-banner' + (showPaused ? ' show' : '');
+  if (isManualPaused) {
+    document.getElementById('pausedBanner').textContent = '⏸ PAUSED — Trading manually suspended from dashboard';
+  } else if (isDeadHour) {
+    document.getElementById('pausedBanner').textContent = '⛔ DEAD HOUR — Trading suspended (UTC ' + new Date().getUTCHours() + ':00)';
+  }
 
   // Circuit breaker
   const cb = s.circuitBreaker || {};

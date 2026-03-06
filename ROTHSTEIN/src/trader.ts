@@ -5,7 +5,7 @@
 // Returns a TradeExecution on success, null on failure.
 
 import { TradeExecution, ScoringResult, ContractInfo, FeatureVector, Side, Mode } from "./types";
-import { CONFIG } from "./config";
+import { CONFIG, getRuntime } from "./config";
 import { logger } from "./logger";
 import * as positions from "./positions";
 import * as pnl from "./pnl";
@@ -48,7 +48,7 @@ export async function executeTrade(
   }
 
   // 3. Position limit
-  const runtime = require("./config").getRuntime();
+  const runtime = getRuntime();
   if (positions.getOpenCount() >= runtime.maxConcurrentPositions) {
     logger.debug("trader", `Max concurrent positions reached (${runtime.maxConcurrentPositions})`);
     return null;
@@ -98,6 +98,8 @@ export async function executeTrade(
     features,
     mode: CONFIG.mode,
     orderId,
+    endTs: contract.endTs,
+    strikePrice: contract.strikePrice || features.spotPrice,
   };
 
   // Open position

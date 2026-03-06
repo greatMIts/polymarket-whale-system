@@ -126,6 +126,15 @@ function processMarket(m: any): boolean {
     : [];
   if (tokenIds.length === 0) return false;
 
+  // Parse outcomes — parallel array with clobTokenIds: e.g. ["Up", "Down"]
+  let rawOutcomes = m.outcomes || [];
+  if (typeof rawOutcomes === "string") {
+    try { rawOutcomes = JSON.parse(rawOutcomes); } catch { rawOutcomes = []; }
+  }
+  const outcomes: string[] = Array.isArray(rawOutcomes)
+    ? rawOutcomes.map((o: any) => String(o))
+    : [];
+
   const title = m.question || m.title || "";
   const endTs = m.endDate ? new Date(m.endDate).getTime() : 0;
   const now = Date.now();
@@ -161,6 +170,7 @@ function processMarket(m: any): boolean {
     windowStartTs,
     durationMs,
     clobTokenIds: tokenIds,
+    outcomes,
     binanceSymbol,
     asset,
     strikePrice,

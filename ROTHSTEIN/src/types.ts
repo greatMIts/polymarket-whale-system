@@ -48,7 +48,8 @@ export interface ContractInfo {
   endTs: number;
   windowStartTs: number;
   durationMs: number;
-  clobTokenIds: string[];      // [upToken, downToken] or just all tokens
+  clobTokenIds: string[];      // parallel with outcomes array
+  outcomes: string[];          // parallel with clobTokenIds, e.g. ["Up", "Down"]
   binanceSymbol: string;       // "BTCUSDT" | "ETHUSDT"
   asset: Asset;
   strikePrice: number | null;
@@ -127,6 +128,8 @@ export interface TradeExecution {
   features: FeatureVector;
   mode: Mode;
   orderId?: string;
+  endTs: number;            // contract expiry timestamp — MUST be stored for position timing
+  strikePrice: number;      // Binance price at contract window start — needed for conditional TP
 }
 
 export interface Position {
@@ -175,6 +178,7 @@ export interface DashboardPayload {
   circuitBreaker: CircuitBreakerState;
   whaleActivity: WhaleSignal[];
   deadHours: number[];
+  paused: boolean;
 
   subsystemHealth: SubsystemHealth;
 }

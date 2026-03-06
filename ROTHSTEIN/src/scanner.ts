@@ -149,17 +149,26 @@ async function runScanCycle(): Promise<void> {
 
 /**
  * Pick the correct CLOB token ID for the given side.
- * Convention: clobTokenIds[0] = Up token, clobTokenIds[1] = Down token.
- * If only 1 token, it's the Up token (binary complement for Down).
+ * Uses the `outcomes` array from Gamma API to match the correct token.
+ * outcomes and clobTokenIds are parallel arrays: outcomes[i] describes clobTokenIds[i].
+ * Fallback: if no outcomes data, assume [0]=Up, [1]=Down (original convention).
  */
 function pickTokenId(contract: ContractInfo, side: Side): string | null {
   const tokens = contract.clobTokenIds;
   if (tokens.length === 0) return null;
 
+  // Use outcomes array for reliable mapping
+  if (contract.outcomes && contract.outcomes.length === tokens.length) {
+    const idx = contract.outcomes.findIndex(o =>
+      o.toLowerCase() === side.toLowerCase()
+    );
+    if (idx >= 0) return tokens[idx];
+  }
+
+  // Fallback: index-based convention [0]=Up, [1]=Down
   if (side === "Up") {
     return tokens[0];
   } else {
-    // Down token is typically the second one
     return tokens.length > 1 ? tokens[1] : tokens[0];
   }
 }

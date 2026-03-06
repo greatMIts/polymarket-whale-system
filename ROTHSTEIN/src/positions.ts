@@ -104,7 +104,10 @@ export async function checkResolutions(): Promise<void> {
     const book = polyBook.getBook(tokenId);
 
     // Method 1: Contract time expired + book shows resolution
-    const contractExpired = contract.ts + (5 * 60 * 1000) < now; // 5 min after trade time
+    // Use actual endTs from contract, NOT trade timestamp
+    const contractExpired = contract.endTs > 0
+      ? contract.endTs < now
+      : (contract.ts + 5 * 60 * 1000) < now;  // fallback for legacy positions without endTs
 
     // Method 2: Market price strongly indicates resolution
     if (book && book.mid > 0) {
@@ -153,7 +156,8 @@ export async function checkConditionalTp(): Promise<void> {
     const spotPrice = binance.getPrice(pos.trade.asset);
     if (!spotPrice) continue;
 
-    const secsRemaining = Math.max(0, (pos.trade.ts + 300_000 - Date.now()) / 1000);
+    // Use actual contract endTs for time remaining, NOT trade.ts + 5min
+    const secsRemaining = Math.max(0, (pos.trade.endTs - Date.now()) / 1000);
     if (secsRemaining <= 0) continue;
 
     const history = binance.getHistory(pos.trade.asset);
@@ -162,9 +166,11 @@ export async function checkConditionalTp(): Promise<void> {
       : null;
     const vol: number = volResult ?? 0.60;
 
+    // Use stored strikePrice (Binance price at window start), NOT current spotPrice
+    const strike = pos.trade.strikePrice || spotPrice;  // fallback for legacy positions
     const fairValue = pricing.computeBinaryFairValue(
       spotPrice,
-      spotPrice,  // use current price as strike for remaining time
+      strike,
       secsRemaining,
       vol,
       pos.trade.side === "Up" ? "UP" : "DOWN"

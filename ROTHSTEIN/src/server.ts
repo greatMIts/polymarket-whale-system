@@ -74,8 +74,9 @@ function buildPayload(): DashboardPayload {
     closedPositions: positions.getClosed(50),
     sessionStats: risk.getStats(),
     circuitBreaker: risk.getCircuitBreaker(),
-    whaleActivity: [],  // Populated below
+    whaleActivity: whales.getAllRecentActivity(50),
     deadHours: runtime.deadHours,
+    paused: runtime.paused,
 
     subsystemHealth,
   };

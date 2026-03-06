@@ -126,16 +126,19 @@ export function connect(): void {
       bucket.lastUpdate = now;
       bucket.history.push({ ts: now, price });
 
-      // Trim to last 10 minutes
-      const cutoff = now - HISTORY_MAX_MS;
-      if (bucket.history.length > 1000) {
+      // Trim to last 10 minutes (trigger at 5000 entries to avoid frequent rebuilds)
+      if (bucket.history.length > 5000) {
+        const cutoff = now - HISTORY_MAX_MS;
         bucket.history = bucket.history.filter(p => p.ts > cutoff);
       }
 
-      // Mark ready after first price received
-      if (!_ready) {
+      // Mark ready only when BOTH BTC and ETH have prices
+      if (!_ready && assets["BTCUSDT"].price > 0 && assets["ETHUSDT"].price > 0) {
         _ready = true;
-        logger.event("binance", "READY", { symbol, price });
+        logger.event("binance", "READY", {
+          BTC: assets["BTCUSDT"].price,
+          ETH: assets["ETHUSDT"].price,
+        });
       }
     } catch {}
   });

@@ -12,7 +12,7 @@ export const CONFIG = {
   // Server
   port: parseInt(process.env.PORT || "3334"),
   mode: (process.env.MODE || "PAPER") as Mode,
-  spyServerUrl: process.env.SPY_SERVER_URL || "ws://localhost:3333",
+  spyServerUrl: process.env.SPY_SERVER_URL || "ws://polymarket-whale-spy.railway.internal:3333",
 
   // Data sources
   binanceWsUrl: "wss://stream.binance.com:9443/stream?streams=btcusdt@trade/ethusdt@trade",
@@ -71,7 +71,7 @@ export const CONFIG = {
   dataDir: process.env.DATA_DIR || "./data",
   decisionsFile: "decisions.jsonl",
   positionsFile: "positions.jsonl",
-  rotationMaxLines: 50_000,
+  rotationMaxLines: 60_000,
   maxArchives: 20,
 
   // CLOB credentials (LIVE mode only)
