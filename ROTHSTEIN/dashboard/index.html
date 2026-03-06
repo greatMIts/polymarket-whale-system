@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ROTHSTEIN — Dashboard</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0a0a0f;
+    --bg2: #12121a;
+    --bg3: #1a1a26;
+    --border: #2a2a3a;
+    --text: #e0e0e8;
+    --dim: #888899;
+    --gold: #ffb800;
+    --green: #00e676;
+    --red: #ff4444;
+    --blue: #448aff;
+    --purple: #b388ff;
+    --orange: #ff9100;
+    --cyan: #18ffff;
+  }
+  body {
+    font-family: 'Consolas', 'Menlo', 'Monaco', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ─── Header ─── */
+  .header {
+    background: linear-gradient(135deg, #1a0a00 0%, #0a0a1a 100%);
+    border-bottom: 2px solid var(--gold);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-left { display: flex; align-items: center; gap: 20px; }
+  .logo {
+    font-size: 28px;
+    font-weight: 900;
+    letter-spacing: 4px;
+    color: var(--gold);
+    text-shadow: 0 0 20px rgba(255,184,0,0.3);
+  }
+  .tagline { color: var(--dim); font-size: 11px; font-style: italic; }
+  .mode-badge {
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 2px;
+  }
+  .mode-paper { background: rgba(68,138,255,0.2); color: var(--blue); border: 1px solid var(--blue); }
+  .mode-live { background: rgba(255,68,68,0.2); color: var(--red); border: 1px solid var(--red); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  .uptime { color: var(--dim); font-size: 12px; }
+  .prices { display: flex; gap: 16px; font-size: 13px; }
+  .price-tag { display: flex; align-items: center; gap: 4px; }
+  .price-tag .asset { color: var(--dim); }
+  .delta-pos { color: var(--green); }
+  .delta-neg { color: var(--red); }
+  .delta-flat { color: var(--dim); }
+
+  /* ─── Grid Layout ─── */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    padding: 12px;
+    max-width: 1800px;
+    margin: 0 auto;
+  }
+  .full-width { grid-column: 1 / -1; }
+  .two-cols { grid-column: span 2; }
+
+  /* ─── Cards ─── */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .card-title {
+    padding: 8px 14px;
+    background: var(--bg3);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--gold);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .card-body { padding: 12px 14px; }
+
+  /* ─── Session Stats ─── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+  }
+  .stat-box {
+    text-align: center;
+    padding: 8px;
+    background: var(--bg);
+    border-radius: 6px;
+  }
+  .stat-value {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .stat-label { font-size: 10px; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; margin-top: 2px; }
+
+  /* ─── Controls ─── */
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn:hover { border-color: var(--gold); color: var(--gold); }
+  .btn-danger { border-color: var(--red); color: var(--red); }
+  .btn-danger:hover { background: rgba(255,68,68,0.1); }
+  .btn-success { border-color: var(--green); color: var(--green); }
+  .btn-success:hover { background: rgba(0,230,118,0.1); }
+  .btn-active { background: rgba(255,184,0,0.15); border-color: var(--gold); color: var(--gold); }
+
+  .paused-banner {
+    background: rgba(255,68,68,0.15);
+    border: 1px solid var(--red);
+    color: var(--red);
+    padding: 10px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    display: none;
+  }
+  .paused-banner.show { display: block; }
+
+  /* ─── Dead Hours Grid ─── */
+  .hours-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 4px;
+  }
+  .hour-btn {
+    padding: 4px 2px;
+    text-align: center;
+    font-size: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+    color: var(--dim);
+  }
+  .hour-btn.dead {
+    background: rgba(255,68,68,0.2);
+    border-color: var(--red);
+    color: var(--red);
+  }
+  .hour-btn.current {
+    border-color: var(--gold);
+    color: var(--gold);
+    font-weight: 700;
+  }
+  .hour-btn:hover { border-color: var(--gold); }
+
+  /* ─── Health Indicators ─── */
+  .health-row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .health-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .health-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .health-dot.ok { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .health-dot.warn { background: var(--orange); box-shadow: 0 0 6px var(--orange); }
+  .health-dot.error { background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+  /* ─── Tables ─── */
+  .tbl {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+  .tbl th {
+    text-align: left;
+    padding: 5px 6px;
+    border-bottom: 1px solid var(--border);
+    color: var(--dim);
+    font-weight: 600;
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .tbl td {
+    padding: 4px 6px;
+    border-bottom: 1px solid rgba(42,42,58,0.5);
+    white-space: nowrap;
+  }
+  .tbl tr:hover { background: rgba(255,184,0,0.03); }
+
+  /* ─── Score Bar ─── */
+  .score-bar {
+    width: 60px;
+    height: 10px;
+    background: var(--bg);
+    border-radius: 5px;
+    overflow: hidden;
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 4px;
+  }
+  .score-bar-fill {
+    height: 100%;
+    border-radius: 5px;
+    transition: width 0.3s;
+  }
+  .score-high { background: var(--green); }
+  .score-mid { background: var(--gold); }
+  .score-low { background: var(--orange); }
+  .score-skip { background: var(--dim); }
+
+  /* ─── Circuit Breaker Banner ─── */
+  .cb-banner {
+    background: rgba(255,145,0,0.15);
+    border: 1px solid var(--orange);
+    color: var(--orange);
+    padding: 8px 14px;
+    font-size: 12px;
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .cb-banner.show { display: flex; }
+
+  /* ─── Config Inputs ─── */
+  .config-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 12px;
+  }
+  .config-row label { color: var(--dim); min-width: 130px; }
+  .config-input {
+    padding: 4px 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 12px;
+    width: 70px;
+  }
+
+  /* ─── Connection Badge ─── */
+  .ws-badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 3px;
+  }
+  .ws-connected { background: rgba(0,230,118,0.15); color: var(--green); }
+  .ws-disconnected { background: rgba(255,68,68,0.15); color: var(--red); }
+
+  /* ─── Scroll ─── */
+  .scroll-box {
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  .scroll-box::-webkit-scrollbar { width: 4px; }
+  .scroll-box::-webkit-scrollbar-track { background: var(--bg); }
+  .scroll-box::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ─── Responsive ─── */
+  @media (max-width: 1200px) {
+    .grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 768px) {
+    .grid { grid-template-columns: 1fr; }
+    .two-cols { grid-column: span 1; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ─── Header ─── -->
+<div class="header">
+  <div class="header-left">
+    <div>
+      <div class="logo">ROTHSTEIN</div>
+      <div class="tagline">"I never gamble. I calculate."</div>
+    </div>
+    <span id="modeBadge" class="mode-badge mode-paper">PAPER</span>
+    <span id="wsBadge" class="ws-badge ws-disconnected">● DISCONNECTED</span>
+  </div>
+  <div class="header-right">
+    <div class="prices">
+      <div class="price-tag">
+        <span class="asset">BTC</span>
+        <span id="btcPrice">—</span>
+        <span id="btcDelta" class="delta-flat">—</span>
+      </div>
+      <div class="price-tag">
+        <span class="asset">ETH</span>
+        <span id="ethPrice">—</span>
+        <span id="ethDelta" class="delta-flat">—</span>
+      </div>
+    </div>
+    <div class="uptime" id="uptime">—</div>
+  </div>
+</div>
+
+<!-- ─── Paused / Circuit Breaker Banners ─── -->
+<div class="paused-banner" id="pausedBanner">⛔ TRADING PAUSED</div>
+<div class="cb-banner" id="cbBanner">
+  <span>⚡ CIRCUIT BREAKER: <span id="cbReason"></span> — Resumes in <span id="cbCountdown"></span></span>
+  <button class="btn" onclick="resetCircuitBreaker()">Reset</button>
+</div>
+
+<!-- ─── Main Grid ─── -->
+<div class="grid">
+
+  <!-- SESSION STATS -->
+  <div class="card two-cols">
+    <div class="card-title">Session Performance</div>
+    <div class="card-body">
+      <div class="stats-row">
+        <div class="stat-box">
+          <div class="stat-value" id="statTrades" style="color:var(--text)">0</div>
+          <div class="stat-label">Trades</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value" id="statWins" style="color:var(--green)">0</div>
+          <div class="stat-label">Wins</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value" id="statLosses" style="color:var(--red)">0</div>
+          <div class="stat-label">Losses</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value" id="statWR" style="color:var(--gold)">—</div>
+          <div class="stat-label">Win Rate</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value" id="statPnl">$0.00</div>
+          <div class="stat-label">Session PnL</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value" id="statDrawdown" style="color:var(--red)">$0.00</div>
+          <div class="stat-label">Max Drawdown</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value" id="statStreak" style="color:var(--dim)">0</div>
+          <div class="stat-label">Consec Losses</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTROLS -->
+  <div class="card">
+    <div class="card-title">Controls</div>
+    <div class="card-body">
+      <div class="controls" style="margin-bottom:12px;">
+        <button class="btn" id="btnPause" onclick="togglePause()">⏸ Pause</button>
+        <button class="btn btn-danger" onclick="resetSession()">↻ Reset Session</button>
+      </div>
+      <div class="config-row">
+        <label>Min Trade Score:</label>
+        <input type="number" class="config-input" id="cfgMinScore" value="60" min="0" max="100" onchange="updateConfig()">
+      </div>
+      <div class="config-row">
+        <label>Sizing Multiplier:</label>
+        <input type="number" class="config-input" id="cfgSizing" value="1.0" min="0" max="5" step="0.1" onchange="updateConfig()">
+      </div>
+      <div class="config-row">
+        <label>Max Positions:</label>
+        <input type="number" class="config-input" id="cfgMaxPos" value="5" min="1" max="20" onchange="updateConfig()">
+      </div>
+    </div>
+  </div>
+
+  <!-- DEAD HOURS -->
+  <div class="card two-cols">
+    <div class="card-title">
+      Dead Hours (UTC) — Click to toggle
+      <span style="font-size:10px;color:var(--dim);font-weight:400;letter-spacing:0">Red = no trading</span>
+    </div>
+    <div class="card-body">
+      <div class="hours-grid" id="hoursGrid"></div>
+    </div>
+  </div>
+
+  <!-- SUBSYSTEM HEALTH -->
+  <div class="card">
+    <div class="card-title">System Health</div>
+    <div class="card-body">
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div class="health-item"><span class="health-dot" id="healthBinance"></span> Binance WS <span id="healthBinanceAge" style="color:var(--dim);font-size:10px;margin-left:auto"></span></div>
+        <div class="health-item"><span class="health-dot" id="healthPoly"></span> Polymarket WS <span id="healthPolyAge" style="color:var(--dim);font-size:10px;margin-left:auto"></span></div>
+        <div class="health-item"><span class="health-dot" id="healthSpy"></span> Spy Server <span id="healthSpyAge" style="color:var(--dim);font-size:10px;margin-left:auto"></span></div>
+        <div class="health-item"><span class="health-dot" id="healthScanner"></span> Scanner <span id="healthScannerAge" style="color:var(--dim);font-size:10px;margin-left:auto"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACTIVE CONTRACTS -->
+  <div class="card full-width">
+    <div class="card-title">Active Contracts <span id="contractCount" style="color:var(--dim);font-weight:400">0</span></div>
+    <div class="card-body scroll-box" style="max-height:160px;">
+      <table class="tbl" id="contractsTable">
+        <thead><tr><th>Asset</th><th>Title</th><th>Duration</th><th>Secs Left</th><th>Tokens</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- SCORE FEED -->
+  <div class="card two-cols">
+    <div class="card-title">Score Feed (Recent Evaluations)</div>
+    <div class="card-body scroll-box">
+      <table class="tbl" id="scoresTable">
+        <thead>
+          <tr><th>Time</th><th>Asset</th><th>Side</th><th>Score</th><th>Action</th><th>Edge</th><th>MidE</th><th>Mom</th><th>Entry</th><th>Secs</th><th>Size</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- OPEN POSITIONS -->
+  <div class="card">
+    <div class="card-title">Open Positions <span id="openCount" style="color:var(--dim);font-weight:400">0</span></div>
+    <div class="card-body scroll-box" style="max-height:200px;">
+      <table class="tbl" id="openTable">
+        <thead><tr><th>ID</th><th>Asset</th><th>Side</th><th>Entry</th><th>$</th><th>Score</th><th>Age</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- CLOSED POSITIONS -->
+  <div class="card full-width">
+    <div class="card-title">Closed Positions (Recent)</div>
+    <div class="card-body scroll-box" style="max-height:250px;">
+      <table class="tbl" id="closedTable">
+        <thead><tr><th>Time</th><th>Asset</th><th>Side</th><th>Entry</th><th>Exit</th><th>PnL</th><th>Score</th><th>Status</th><th>Duration</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─── WebSocket Connection ───────────────────────────────────────────────────
+const wsUrl = `ws://${location.host}`;
+let ws = null;
+let reconnectMs = 1000;
+
+function connectWs() {
+  ws = new WebSocket(wsUrl);
+  ws.onopen = () => {
+    document.getElementById('wsBadge').className = 'ws-badge ws-connected';
+    document.getElementById('wsBadge').textContent = '● CONNECTED';
+    reconnectMs = 1000;
+  };
+  ws.onclose = () => {
+    document.getElementById('wsBadge').className = 'ws-badge ws-disconnected';
+    document.getElementById('wsBadge').textContent = '● DISCONNECTED';
+    setTimeout(connectWs, reconnectMs);
+    reconnectMs = Math.min(reconnectMs * 2, 15000);
+  };
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'state') updateDashboard(msg);
+    } catch {}
+  };
+}
+connectWs();
+
+// ─── Dead Hours Grid ────────────────────────────────────────────────────────
+let currentDeadHours = [15, 16];
+const hoursGrid = document.getElementById('hoursGrid');
+
+function renderHoursGrid() {
+  hoursGrid.innerHTML = '';
+  const currentHour = new Date().getUTCHours();
+  for (let h = 0; h < 24; h++) {
+    const btn = document.createElement('div');
+    btn.className = 'hour-btn';
+    if (currentDeadHours.includes(h)) btn.classList.add('dead');
+    if (h === currentHour) btn.classList.add('current');
+    btn.textContent = String(h).padStart(2, '0');
+    btn.title = `UTC ${h}:00 — Click to toggle`;
+    btn.onclick = () => toggleDeadHour(h);
+    hoursGrid.appendChild(btn);
+  }
+}
+
+function toggleDeadHour(h) {
+  const idx = currentDeadHours.indexOf(h);
+  if (idx >= 0) currentDeadHours.splice(idx, 1);
+  else currentDeadHours.push(h);
+  currentDeadHours.sort((a,b) => a - b);
+  renderHoursGrid();
+  fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deadHours: currentDeadHours })
+  });
+}
+renderHoursGrid();
+
+// ─── API Actions ────────────────────────────────────────────────────────────
+function togglePause() {
+  fetch('/api/pause', { method: 'POST' });
+}
+function resetSession() {
+  if (confirm('Reset all session stats?')) fetch('/api/reset-session', { method: 'POST' });
+}
+function resetCircuitBreaker() {
+  fetch('/api/reset-circuit-breaker', { method: 'POST' });
+}
+function updateConfig() {
+  const body = {
+    minTradeScore: parseInt(document.getElementById('cfgMinScore').value),
+    sizingMultiplier: parseFloat(document.getElementById('cfgSizing').value),
+    maxConcurrentPositions: parseInt(document.getElementById('cfgMaxPos').value),
+  };
+  fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+}
+
+// ─── Dashboard Update ───────────────────────────────────────────────────────
+function updateDashboard(s) {
+  // Mode
+  const mb = document.getElementById('modeBadge');
+  mb.textContent = s.mode;
+  mb.className = 'mode-badge ' + (s.mode === 'LIVE' ? 'mode-live' : 'mode-paper');
+
+  // Uptime
+  const secs = Math.floor(s.uptime / 1000);
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const sec = secs % 60;
+  document.getElementById('uptime').textContent = `${h}h ${String(m).padStart(2,'0')}m ${String(sec).padStart(2,'0')}s`;
+
+  // Prices
+  document.getElementById('btcPrice').textContent = s.btcPrice ? '$' + s.btcPrice.toLocaleString(undefined, {maximumFractionDigits:0}) : '—';
+  document.getElementById('ethPrice').textContent = s.ethPrice ? '$' + s.ethPrice.toLocaleString(undefined, {maximumFractionDigits:0}) : '—';
+  setDelta('btcDelta', s.btcDelta30s);
+  setDelta('ethDelta', s.ethDelta30s);
+
+  // Stats
+  const st = s.sessionStats || {};
+  document.getElementById('statTrades').textContent = st.trades || 0;
+  document.getElementById('statWins').textContent = st.wins || 0;
+  document.getElementById('statLosses').textContent = st.losses || 0;
+  document.getElementById('statWR').textContent = st.trades > 0 ? (st.winRate * 100).toFixed(1) + '%' : '—';
+  setPnl('statPnl', st.pnl || 0);
+  document.getElementById('statDrawdown').textContent = '-$' + (st.maxDrawdown || 0).toFixed(2);
+  document.getElementById('statStreak').textContent = st.consecutiveLosses || 0;
+
+  // Paused banner
+  const paused = s.deadHours && s.deadHours.includes(new Date().getUTCHours());
+  // Check if manually paused via config (we infer from circuit breaker or check the response)
+  document.getElementById('pausedBanner').className = 'paused-banner' + (paused ? ' show' : '');
+  if (paused) document.getElementById('pausedBanner').textContent = '⛔ DEAD HOUR — Trading suspended (UTC ' + new Date().getUTCHours() + ':00)';
+
+  // Circuit breaker
+  const cb = s.circuitBreaker || {};
+  if (cb.active) {
+    document.getElementById('cbBanner').className = 'cb-banner show';
+    document.getElementById('cbReason').textContent = cb.reason;
+    const remaining = Math.max(0, Math.round((cb.resumeAt - Date.now()) / 1000));
+    document.getElementById('cbCountdown').textContent = remaining + 's';
+  } else {
+    document.getElementById('cbBanner').className = 'cb-banner';
+  }
+
+  // Dead hours
+  if (s.deadHours) {
+    currentDeadHours = s.deadHours;
+    renderHoursGrid();
+  }
+
+  // Health
+  setHealth('healthBinance', s.subsystemHealth?.binanceWs, 'healthBinanceAge');
+  setHealth('healthPoly', s.subsystemHealth?.polymarketWs, 'healthPolyAge');
+  setHealth('healthSpy', s.subsystemHealth?.spyWs, 'healthSpyAge');
+  setHealthScanner('healthScanner', s.subsystemHealth?.scanner, 'healthScannerAge');
+
+  // Contracts
+  renderContracts(s.activeContracts || []);
+
+  // Score feed
+  renderScores(s.recentScores || []);
+
+  // Open positions
+  renderOpen(s.openPositions || []);
+
+  // Closed positions
+  renderClosed(s.closedPositions || []);
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+function setDelta(id, val) {
+  const el = document.getElementById(id);
+  if (val === undefined || val === null || isNaN(val)) { el.textContent = '—'; el.className = 'delta-flat'; return; }
+  const sign = val >= 0 ? '+' : '';
+  el.textContent = sign + val.toFixed(3) + '%';
+  el.className = val > 0.005 ? 'delta-pos' : val < -0.005 ? 'delta-neg' : 'delta-flat';
+}
+
+function setPnl(id, val) {
+  const el = document.getElementById(id);
+  el.textContent = (val >= 0 ? '+' : '') + '$' + val.toFixed(2);
+  el.style.color = val > 0 ? 'var(--green)' : val < 0 ? 'var(--red)' : 'var(--text)';
+}
+
+function setHealth(dotId, data, ageId) {
+  const dot = document.getElementById(dotId);
+  const age = document.getElementById(ageId);
+  if (!data) { dot.className = 'health-dot error'; age.textContent = 'N/A'; return; }
+  const ageSec = data.lastHeartbeat > 0 ? Math.round((Date.now() - data.lastHeartbeat) / 1000) : 999;
+  if (data.connected && ageSec < 30) { dot.className = 'health-dot ok'; }
+  else if (data.connected) { dot.className = 'health-dot warn'; }
+  else { dot.className = 'health-dot error'; }
+  age.textContent = ageSec < 999 ? ageSec + 's ago' : '—';
+}
+
+function setHealthScanner(dotId, data, ageId) {
+  const dot = document.getElementById(dotId);
+  const age = document.getElementById(ageId);
+  if (!data) { dot.className = 'health-dot error'; age.textContent = 'N/A'; return; }
+  dot.className = data.running ? 'health-dot ok' : 'health-dot error';
+  const ageSec = data.lastScan > 0 ? Math.round((Date.now() - data.lastScan) / 1000) : 999;
+  age.textContent = ageSec < 999 ? ageSec + 's ago' : '—';
+}
+
+function scoreColor(s) {
+  if (s >= 80) return 'var(--green)';
+  if (s >= 60) return 'var(--gold)';
+  if (s >= 40) return 'var(--orange)';
+  return 'var(--dim)';
+}
+
+function scoreBarClass(s) {
+  if (s >= 80) return 'score-high';
+  if (s >= 60) return 'score-mid';
+  if (s >= 40) return 'score-low';
+  return 'score-skip';
+}
+
+function timeAgo(ms) {
+  const s = Math.round((Date.now() - ms) / 1000);
+  if (s < 60) return s + 's';
+  return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+}
+
+function fmtTime(ts) {
+  return new Date(ts).toLocaleTimeString('en-US', { hour12: false });
+}
+
+// ─── Renderers ──────────────────────────────────────────────────────────────
+function renderContracts(contracts) {
+  document.getElementById('contractCount').textContent = contracts.length;
+  const tbody = document.querySelector('#contractsTable tbody');
+  tbody.innerHTML = '';
+  for (const c of contracts) {
+    const secsLeft = Math.max(0, Math.round((c.endTs - Date.now()) / 1000));
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td style="color:var(--gold)">${c.asset}</td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis">${c.title}</td><td>${c.contractDurationMinutes}m</td><td style="color:${secsLeft<90?'var(--red)':secsLeft<180?'var(--orange)':'var(--text)'}">${secsLeft}s</td><td style="color:var(--dim)">${c.clobTokenIds.length}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function renderScores(scores) {
+  const tbody = document.querySelector('#scoresTable tbody');
+  tbody.innerHTML = '';
+  const recent = scores.slice(-30).reverse();
+  for (const d of recent) {
+    const tr = document.createElement('tr');
+    const actionColor = d.action === 'TRADE' ? 'var(--green)' : d.action === 'LOG_ONLY' ? 'var(--gold)' : 'var(--dim)';
+    tr.innerHTML = `<td>${fmtTime(d.ts)}</td><td style="color:var(--gold)">${d.asset}</td><td>${d.side}</td><td><span class="score-bar"><span class="score-bar-fill ${scoreBarClass(d.score)}" style="width:${d.score}%"></span></span><span style="color:${scoreColor(d.score)}">${d.score}</span></td><td style="color:${actionColor};font-weight:700">${d.action}</td><td>${d.features?.edgeVsSpot?.toFixed(3)||'—'}</td><td>${d.features?.midEdge?.toFixed(3)||'—'}</td><td>${d.features?.momentumAligned?'✓':'✗'}</td><td>${d.entryPrice?.toFixed(3)||'—'}</td><td>${Math.round(d.secsRemaining)}s</td><td>${d.sizeUsd ? '$'+d.sizeUsd : '—'}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function renderOpen(positions) {
+  document.getElementById('openCount').textContent = positions.length;
+  const tbody = document.querySelector('#openTable tbody');
+  tbody.innerHTML = '';
+  for (const p of positions) {
+    const t = p.trade;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td style="color:var(--dim)">${t.id.slice(-6)}</td><td style="color:var(--gold)">${t.asset}</td><td>${t.side}</td><td>${t.entryPrice.toFixed(3)}</td><td>$${t.sizeUsd}</td><td style="color:${scoreColor(t.score)}">${t.score}</td><td>${timeAgo(p.openedAt)}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function renderClosed(positions) {
+  const tbody = document.querySelector('#closedTable tbody');
+  tbody.innerHTML = '';
+  const recent = positions.slice(-30).reverse();
+  for (const p of recent) {
+    const t = p.trade;
+    const tr = document.createElement('tr');
+    const pnlColor = (p.pnl||0) >= 0 ? 'var(--green)' : 'var(--red)';
+    const statusColor = p.status === 'RESOLVED_WIN' ? 'var(--green)' : p.status === 'EXITED_TP' ? 'var(--cyan)' : 'var(--red)';
+    const dur = p.closedAt && p.openedAt ? Math.round((p.closedAt - p.openedAt) / 1000) : '—';
+    tr.innerHTML = `<td>${fmtTime(p.closedAt||p.openedAt)}</td><td style="color:var(--gold)">${t.asset}</td><td>${t.side}</td><td>${t.entryPrice.toFixed(3)}</td><td>${(p.exitPrice||0).toFixed(3)}</td><td style="color:${pnlColor};font-weight:700">${(p.pnl||0)>=0?'+':''}$${(p.pnl||0).toFixed(4)}</td><td style="color:${scoreColor(t.score)}">${t.score}</td><td style="color:${statusColor}">${p.status}</td><td>${dur}s</td>`;
+    tbody.appendChild(tr);
+  }
+}
+</script>
+</body>
+</html>

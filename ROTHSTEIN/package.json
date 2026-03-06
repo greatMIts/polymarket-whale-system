@@ -1,0 +1,23 @@
+{
+  "name": "rothstein",
+  "version": "1.0.0",
+  "description": "Independent prediction bot for Polymarket 5-min BTC/ETH contracts",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "npx ts-node src/index.ts"
+  },
+  "dependencies": {
+    "axios": "^1.7.0",
+    "express": "^4.21.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.0",
+    "typescript": "^5.7.0",
+    "ts-node": "^10.9.0"
+  }
+}
