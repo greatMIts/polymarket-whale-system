@@ -79,9 +79,21 @@ export function getHistory(asset: Asset): PricePoint[] {
 
 export function isStale(): boolean {
   const now = Date.now();
-  return Object.values(assets).every(a =>
+  // Stale if ANY asset is stale (not all) — one dead feed shouldn't be masked
+  return Object.values(assets).some(a =>
     a.lastUpdate === 0 || now - a.lastUpdate > CONFIG.binanceStaleMs
   );
+}
+
+/**
+ * Check if a specific asset's price data is stale.
+ * Used by feature assembly to reject contracts with stale underlying prices.
+ */
+export function isAssetStale(asset: Asset): boolean {
+  const sym = symbolMap[asset];
+  const bucket = assets[sym];
+  if (!bucket || bucket.lastUpdate === 0) return true;
+  return Date.now() - bucket.lastUpdate > CONFIG.binanceStaleMs;
 }
 
 export function isReady(): boolean { return _ready; }

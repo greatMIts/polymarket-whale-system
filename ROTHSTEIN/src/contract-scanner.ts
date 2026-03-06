@@ -61,41 +61,73 @@ export function getCacheSize(): number {
 }
 
 // ─── Gamma API Scan ─────────────────────────────────────────────────────────
+// Query /markets with end_date_min/max + order by endDate ascending.
+// This ensures we get CURRENTLY ACTIVE contracts (ending soonest) rather than
+// the most recently CREATED ones (which are often far-future pre-created batches).
+// Slug pattern: (btc|eth)-updown-(5m|15m)-{unix_timestamp}
+
+const UPDOWN_SLUG_RE = /^(btc|eth)-updown-(5m|15m)-\d+$/;
 
 export async function scanForContracts(): Promise<number> {
-  const keywords = ["Bitcoin", "Ethereum"];
   let newContracts = 0;
+  const now = Date.now();
 
-  for (const keyword of keywords) {
+  // Two-pass scan:
+  //   Pass 1: Contracts ending in the next 10 minutes (currently active + just started)
+  //   Pass 2: Contracts ending in 10-30 minutes (upcoming, for pre-subscription)
+  const passes = [
+    { end_date_min: new Date(now).toISOString(), end_date_max: new Date(now + 10 * 60_000).toISOString(), label: "active" },
+    { end_date_min: new Date(now + 10 * 60_000).toISOString(), end_date_max: new Date(now + 30 * 60_000).toISOString(), label: "upcoming" },
+  ];
+
+  for (const pass of passes) {
     try {
-      const { data } = await axios.get(`${CONFIG.gammaApi}/events`, {
-        params: { closed: false, limit: 5, tag: keyword },
-        timeout: 8000,
+      const { data } = await axios.get(`${CONFIG.gammaApi}/markets`, {
+        params: {
+          active: true,
+          closed: false,
+          limit: 100,
+          order: "endDate",
+          ascending: true,
+          end_date_min: pass.end_date_min,
+          end_date_max: pass.end_date_max,
+        },
+        timeout: 10000,
         headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" },
       });
 
-      const events = Array.isArray(data) ? data : [];
-      for (const ev of events) {
-        const title = ev.title || ev.question || "";
-        if (!/up or down/i.test(title)) continue;
+      const markets = Array.isArray(data) ? data : [];
+      let passFound = 0;
+      for (const m of markets) {
+        const slug = m.slug || "";
+        if (!UPDOWN_SLUG_RE.test(slug)) continue;
 
-        const markets = ev.markets || [];
-        for (const m of markets) {
-          const added = processMarket(m);
-          if (added) newContracts++;
-        }
+        // Only BTC and ETH for now
+        const asset = slug.startsWith("btc") ? "BTC" : slug.startsWith("eth") ? "ETH" : null;
+        if (!asset) continue;
+
+        // Only 5-min contracts
+        if (!slug.includes("-5m-")) continue;
+
+        const added = processMarket(m);
+        if (added) { newContracts++; passFound++; }
+      }
+      if (passFound > 0) {
+        logger.debug("scanner", `${pass.label} pass: ${passFound} new from ${markets.length} results`);
       }
     } catch (e: any) {
-      logger.debug("scanner", `Gamma scan error for ${keyword}: ${e.message}`);
+      logger.debug("scanner", `Gamma ${pass.label} scan error: ${e.message}`);
     }
   }
 
-  // Cleanup expired contracts (ended > 5 min ago)
-  const now = Date.now();
+  // Cleanup expired contracts (ended > 5 min ago) + notify polybook to unsub
   for (const [id, c] of contractCache) {
     if (c.endTs > 0 && now - c.endTs > 300_000) {
       contractCache.delete(id);
-      for (const t of c.clobTokenIds) tokenToContract.delete(t);
+      for (const t of c.clobTokenIds) {
+        tokenToContract.delete(t);
+        polyBook.unsubscribe(t);
+      }
     }
   }
 
@@ -142,21 +174,53 @@ function processMarket(m: any): boolean {
   // Skip if already ended
   if (endTs > 0 && endTs < now) return false;
 
-  // Detect asset
+  // Detect asset from slug or title
+  const slug = m.slug || "";
   const titleLower = title.toLowerCase();
   let binanceSymbol = "";
   let asset: Asset = "BTC";
-  for (const [kw, sym] of Object.entries(ASSET_MAP)) {
-    if (titleLower.includes(kw)) {
-      binanceSymbol = sym;
-      asset = sym === "ETHUSDT" ? "ETH" : "BTC";
-      break;
+
+  if (slug.startsWith("btc-") || titleLower.includes("bitcoin") || titleLower.includes("btc")) {
+    binanceSymbol = "BTCUSDT";
+    asset = "BTC";
+  } else if (slug.startsWith("eth-") || titleLower.includes("ethereum") || titleLower.includes("eth")) {
+    binanceSymbol = "ETHUSDT";
+    asset = "ETH";
+  } else {
+    // Fallback: try keyword map
+    for (const [kw, sym] of Object.entries(ASSET_MAP)) {
+      if (titleLower.includes(kw)) {
+        binanceSymbol = sym;
+        asset = sym === "ETHUSDT" ? "ETH" : "BTC";
+        break;
+      }
     }
   }
   if (!binanceSymbol) return false;
 
-  // Parse time window from title
-  const { windowStartTs, durationMs } = parseWindowStartTs(title, endTs);
+  // Use eventStartTime from API if available (much more reliable than title parsing)
+  let windowStartTs = 0;
+  let durationMs = 0;
+
+  if (m.eventStartTime) {
+    windowStartTs = new Date(m.eventStartTime).getTime();
+    durationMs = endTs > 0 && windowStartTs > 0 ? endTs - windowStartTs : 0;
+  }
+
+  // Fallback: parse from slug timestamp or title
+  if (windowStartTs <= 0) {
+    const slugMatch = slug.match(/-(\d{10,})$/);
+    if (slugMatch) {
+      windowStartTs = parseInt(slugMatch[1]) * 1000;
+      durationMs = endTs > 0 && windowStartTs > 0 ? endTs - windowStartTs : 0;
+    }
+  }
+  if (windowStartTs <= 0) {
+    const parsed = parseWindowStartTs(title, endTs);
+    windowStartTs = parsed.windowStartTs;
+    durationMs = parsed.durationMs;
+  }
+
   const contractDurationMinutes = durationMs > 0 ? Math.round(durationMs / 60_000) : 0;
 
   // Get strike price (will be fetched lazily if needed)
@@ -165,7 +229,7 @@ function processMarket(m: any): boolean {
   const contract: ContractInfo = {
     conditionId,
     title,
-    startTs: m.startDate ? new Date(m.startDate).getTime() : 0,
+    startTs: m.startDate ? new Date(m.startDate).getTime() : (m.createdAt ? new Date(m.createdAt).getTime() : 0),
     endTs,
     windowStartTs,
     durationMs,
@@ -183,6 +247,8 @@ function processMarket(m: any): boolean {
 
   // Pre-subscribe to order book!
   polyBook.subscribe(tokenIds);
+
+  logger.debug("scanner", `Cached: "${title.slice(0, 60)}" | ${asset} ${contractDurationMinutes}m | ${tokenIds.length} tokens | ends ${endTs ? new Date(endTs).toISOString() : "?"}`);
 
   return true;
 }
@@ -203,6 +269,10 @@ export async function fetchStrikePrice(contract: ContractInfo): Promise<number |
   if (contract.strikePrice !== null) return contract.strikePrice;
   if (contract.windowStartTs <= 0) return null;
 
+  // Don't attempt klines fetch if the window started less than 3s ago (data not available yet)
+  const age = Date.now() - contract.windowStartTs;
+  if (age < 3000) return null;
+
   // Try multiple endpoints for geo-restriction failover
   for (let attempt = 0; attempt < KLINES_ENDPOINTS.length; attempt++) {
     const endpoint = KLINES_ENDPOINTS[klinesEndpointIdx % KLINES_ENDPOINTS.length];
@@ -222,15 +292,20 @@ export async function fetchStrikePrice(contract: ContractInfo): Promise<number |
         if (openPrice > 0) {
           contract.strikePrice = openPrice;
           contractCache.set(contract.conditionId, contract);
+          logger.info("scanner", `Strike fetched: ${contract.asset} $${openPrice.toFixed(2)} for "${contract.title.slice(0, 50)}"`);
           return openPrice;
         }
       }
+      // Request succeeded but no data — for very new contracts, kline might not exist yet
+      logger.debug("scanner", `Klines returned no data for ${contract.asset} at ${new Date(contract.windowStartTs).toISOString()} (age: ${Math.round(age / 1000)}s)`);
       break;  // Request succeeded (even if no data), stop retrying
     } catch (e: any) {
       // 451 = geo-restriction, cycle to next endpoint
       klinesEndpointIdx++;
       if (attempt < KLINES_ENDPOINTS.length - 1) {
         logger.debug("scanner", `Klines endpoint blocked (${e.message}), trying next...`);
+      } else {
+        logger.debug("scanner", `All klines endpoints failed for ${contract.asset}: ${e.message}`);
       }
     }
   }

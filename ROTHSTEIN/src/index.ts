@@ -55,9 +55,9 @@ async function boot(): Promise<void> {
   logger.info("boot", "Step 7/12: Connecting to Polymarket book...");
   polyBook.connect();
 
-  // Step 8: Connect Spy Server (whale signals — optional)
-  logger.info("boot", "Step 8/12: Connecting to Spy server...");
-  whales.connect();
+  // Step 8: Start whale poller (direct Polymarket API polling)
+  logger.info("boot", "Step 8/12: Starting whale poller...");
+  whales.start();
 
   // Step 9: Initial contract scan
   logger.info("boot", "Step 9/12: Scanning for contracts...");
@@ -160,7 +160,7 @@ function shutdown(signal: string): void {
 
   binance.disconnect();
   polyBook.disconnect();
-  whales.disconnect();
+  whales.stop();
   stopConfigWatcher();
 
   logger.info("boot", "ROTHSTEIN shutdown complete. Arrivederci.");

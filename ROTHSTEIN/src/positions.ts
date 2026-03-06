@@ -149,7 +149,8 @@ export async function checkConditionalTp(): Promise<void> {
     const currentMarketPrice = book.mid;
 
     // Only consider TP if market price is high enough (in profit territory)
-    if (currentMarketPrice < CONFIG.conditionalTpMinPrice) continue;
+    const runtime = getRuntime();
+    if (currentMarketPrice < runtime.conditionalTpMinPrice) continue;
 
     // Check if edge has deteriorated
     // Re-compute fair value with current data
@@ -180,7 +181,7 @@ export async function checkConditionalTp(): Promise<void> {
 
     // EXIT CONDITION: Market price >= 0.85 AND edge has gone negative
     // This means the model says the position is overpriced — take the profit
-    if (currentEdge < CONFIG.conditionalTpEdgeThreshold) {
+    if (currentEdge < runtime.conditionalTpEdgeThreshold) {
       const exitPnl = pnl.computeExitPnl(
         pos.trade.entryPrice,
         currentMarketPrice * 0.99,  // assume ~1% slippage on exit

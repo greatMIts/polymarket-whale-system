@@ -5,12 +5,13 @@
 - GitHub: https://github.com/greatMIts/polymarket-whale-system/tree/main/ROTHSTEIN
 
 ## Deployed Service (Railway)
-- Dashboard: https://rothstein-production.up.railway.app
-- Health: https://rothstein-production.up.railway.app/health
-- API: https://rothstein-production.up.railway.app/api/state
-- Railway Project: polymarket-whale-bot (95bc8f95-c4af-4561-9610-609322928576)
-- Service: rothstein (d9878ffb-833d-4ab9-a45c-08997100c56c)
-- Region: us-west1
+- Dashboard: https://rothstein-production-6993.up.railway.app
+- Health: https://rothstein-production-6993.up.railway.app/health
+- API: https://rothstein-production-6993.up.railway.app/api/state
+- Railway Project: polymarket-whale-spy (34041633-a65e-4c69-8b01-045e49797b26)
+- Service: rothstein (21a514d8-8604-4e4d-9656-1fe8a4b8c8c8)
+- Environment: production (c670bdb9-62d1-43d4-8051-7b033495f917)
+- Region: europe-west4 (Amsterdam)
 
 ## Architecture (5 Layers, 19 Modules)
 Layer 0: types.ts, config.ts, logger.ts, persistence.ts
@@ -22,9 +23,9 @@ Layer 5: server.ts, index.ts
 Dashboard: dashboard/index.html
 
 ## Environment Variables Required
-- PORT (default: 3334)
+- PORT (default: 8080)
 - MODE (PAPER or LIVE)
-- SPY_SERVER_URL (ws://polymarket-whale-bot.railway.internal)
+- DASHBOARD_PASSWORD (default: 7777777lL)
 - DATA_DIR (/app/data)
 - POLY_API_KEY (LIVE mode only)
 - POLY_API_SECRET (LIVE mode only)
@@ -40,9 +41,14 @@ Dashboard: dashboard/index.html
 - Secs remaining: 90-300
 - Dead hours: [15, 16] UTC (configurable from dashboard)
 - Sizing tiers: $5 (score 60) to $20 (score 90+)
+- 12 tracked whale wallets (direct polling via Polymarket Data API)
+- Whale poll interval: 5s (staggered across wallets)
 
 ## Notes
-- Binance WS blocked in US (451). Auto-failover to data-stream.binance.vision
+- Region: Amsterdam (europe-west4) — Binance WS works directly, Polymarket via Irish IP
+- Polymarket WS requires text "PING" every 10s (not protocol-level ping)
+- Contract scanner uses /markets endpoint with slug pattern (btc|eth)-updown-(5m|15m)-{ts}
+- Dashboard password-protected with token-based auth
 - Conditional TP based on market price (polyMid >= 0.85) + edge drop below 0
 - Dashboard is the primary control interface — dead hours, pause, scoring all configurable
 - PAPER mode simulates trades; LIVE mode requires CLOB credentials

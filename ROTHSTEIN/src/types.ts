@@ -179,6 +179,7 @@ export interface DashboardPayload {
   whaleActivity: WhaleSignal[];
   deadHours: number[];
   paused: boolean;
+  runtimeConfig: RuntimeConfig;
 
   subsystemHealth: SubsystemHealth;
 }
@@ -205,7 +206,7 @@ export interface CircuitBreakerState {
 export interface SubsystemHealth {
   binanceWs: { connected: boolean; lastHeartbeat: number; stale: boolean };
   polymarketWs: { connected: boolean; lastHeartbeat: number; stale: boolean };
-  spyWs: { connected: boolean; lastHeartbeat: number; stale: boolean };
+  whalePoller: { active: boolean; lastPoll: number; walletsPolled: number };
   scanner: { running: boolean; lastScan: number };
 }
 
@@ -238,4 +239,20 @@ export interface RuntimeConfig {
   sizingMultiplier: number;    // default 1.0
   maxConcurrentPositions: number;
   paused: boolean;             // manual pause from dashboard
+
+  // Hard gates (hot-reloadable from Settings)
+  minEdgeVsSpot: number;       // default 0.05
+  minPrice: number;            // default 0.45
+  maxPrice: number;            // default 0.85
+  maxBookSpread: number;       // default 0.04
+  minSecsRemaining: number;    // default 90
+  maxSecsRemaining: number;    // default 300
+
+  // Risk
+  maxTotalAtRisk: number;      // default 50
+  consecutiveLossThrottle: number;  // default 5
+
+  // Conditional TP
+  conditionalTpMinPrice: number;    // default 0.85
+  conditionalTpEdgeThreshold: number;  // default 0
 }

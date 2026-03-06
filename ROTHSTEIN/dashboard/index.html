@@ -123,7 +123,7 @@
   }
   .stat-label { font-size: 10px; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; margin-top: 2px; }
 
-  /* ─── Controls ─── */
+  /* ─── Controls / Buttons ─── */
   .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .btn {
     padding: 6px 14px;
@@ -155,6 +155,47 @@
     display: none;
   }
   .paused-banner.show { display: block; }
+
+  /* ─── Settings Bar & Panel ─── */
+  .settings-bar {
+    max-width: 1800px;
+    margin: 0 auto;
+    padding: 10px 12px 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .btn-settings {
+    background: var(--bg3);
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    font-size: 13px;
+    padding: 8px 20px;
+    letter-spacing: 1px;
+    font-weight: 700;
+  }
+  .btn-settings:hover { background: rgba(255,184,0,0.15); }
+  .btn-settings.active { background: rgba(255,184,0,0.2); }
+  .settings-saved {
+    color: var(--green);
+    font-size: 11px;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .settings-saved.show { opacity: 1; }
+
+  .settings-panel {
+    display: none;
+    max-width: 1800px;
+    margin: 0 auto;
+    padding: 12px 12px 0;
+  }
+  .settings-panel.show { display: block; }
+  .settings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+  }
 
   /* ─── Dead Hours Grid ─── */
   .hours-grid {
@@ -263,7 +304,7 @@
     margin-bottom: 8px;
     font-size: 12px;
   }
-  .config-row label { color: var(--dim); min-width: 130px; }
+  .config-row label { color: var(--dim); min-width: 140px; }
   .config-input {
     padding: 4px 8px;
     background: var(--bg);
@@ -272,8 +313,38 @@
     color: var(--text);
     font-family: inherit;
     font-size: 12px;
-    width: 70px;
+    width: 80px;
   }
+  .config-input:focus { border-color: var(--gold); outline: none; }
+
+  /* ─── Section headers in settings ─── */
+  .section-label {
+    font-size: 10px;
+    color: var(--dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ─── Export buttons ─── */
+  .export-btn {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+  }
+  .export-btn:hover { border-color: var(--cyan); color: var(--cyan); }
 
   /* ─── Connection Badge ─── */
   .ws-badge {
@@ -296,9 +367,11 @@
   /* ─── Responsive ─── */
   @media (max-width: 1200px) {
     .grid { grid-template-columns: 1fr 1fr; }
+    .settings-grid { grid-template-columns: 1fr 1fr; }
   }
   @media (max-width: 768px) {
     .grid { grid-template-columns: 1fr; }
+    .settings-grid { grid-template-columns: 1fr; }
     .two-cols { grid-column: span 1; }
   }
 </style>
@@ -337,6 +410,133 @@
 <div class="cb-banner" id="cbBanner">
   <span>⚡ CIRCUIT BREAKER: <span id="cbReason"></span> — Resumes in <span id="cbCountdown"></span></span>
   <button class="btn" onclick="resetCircuitBreaker()">Reset</button>
+</div>
+
+<!-- ─── Settings Button ─── -->
+<div class="settings-bar">
+  <button class="btn btn-settings" id="btnSettings" onclick="toggleSettings()">⚙ Settings</button>
+  <span class="settings-saved" id="settingsSaved">✓ Saved</span>
+</div>
+
+<!-- ─── Settings Panel (hidden by default) ─── -->
+<div id="settingsPanel" class="settings-panel">
+  <div class="settings-grid">
+
+    <!-- Filter Gates -->
+    <div class="card">
+      <div class="card-title">Filter Gates</div>
+      <div class="card-body">
+        <div class="config-row">
+          <label>Min Edge vs Spot:</label>
+          <input type="number" class="config-input" id="cfgMinEdge" value="0.05" min="0" max="0.5" step="0.01" onchange="saveSettings()">
+        </div>
+        <div class="config-row">
+          <label>Min Price:</label>
+          <input type="number" class="config-input" id="cfgMinPrice" value="0.45" min="0.01" max="0.99" step="0.01" onchange="saveSettings()">
+        </div>
+        <div class="config-row">
+          <label>Max Price:</label>
+          <input type="number" class="config-input" id="cfgMaxPrice" value="0.85" min="0.01" max="0.99" step="0.01" onchange="saveSettings()">
+        </div>
+        <div class="config-row">
+          <label>Max Book Spread:</label>
+          <input type="number" class="config-input" id="cfgMaxSpread" value="0.04" min="0.001" max="0.20" step="0.005" onchange="saveSettings()">
+        </div>
+        <div class="config-row">
+          <label>Min Secs Remaining:</label>
+          <input type="number" class="config-input" id="cfgMinSecs" value="90" min="0" max="600" step="5" onchange="saveSettings()">
+        </div>
+        <div class="config-row">
+          <label>Max Secs Remaining:</label>
+          <input type="number" class="config-input" id="cfgMaxSecs" value="300" min="30" max="900" step="5" onchange="saveSettings()">
+        </div>
+      </div>
+    </div>
+
+    <!-- Scoring & Sizing -->
+    <div class="card">
+      <div class="card-title">Scoring & Sizing</div>
+      <div class="card-body">
+        <div class="config-row">
+          <label>Min Trade Score:</label>
+          <input type="number" class="config-input" id="cfgMinScore" value="60" min="0" max="100" step="1" onchange="saveSettings()">
+        </div>
+        <div class="config-row">
+          <label>Sizing Multiplier:</label>
+          <input type="number" class="config-input" id="cfgSizing" value="1.0" min="0" max="5" step="0.1" onchange="saveSettings()">
+        </div>
+        <div class="config-row">
+          <label>Max Positions:</label>
+          <input type="number" class="config-input" id="cfgMaxPos" value="5" min="1" max="20" step="1" onchange="saveSettings()">
+        </div>
+        <div style="margin-top:16px">
+          <div class="section-label">Sizing Tiers (read-only)</div>
+          <div style="font-size:11px;color:var(--dim);line-height:1.6">
+            Score ≥90 → $20 &nbsp;|&nbsp; ≥80 → $15<br>
+            Score ≥70 → $10 &nbsp;|&nbsp; ≥60 → $5<br>
+            Score ≥50 → $2 (shadow only)
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Risk & Take-Profit -->
+    <div class="card">
+      <div class="card-title">Risk & Take-Profit</div>
+      <div class="card-body">
+        <div class="config-row">
+          <label>Max Total at Risk ($):</label>
+          <input type="number" class="config-input" id="cfgMaxRisk" value="50" min="5" max="500" step="5" onchange="saveSettings()">
+        </div>
+        <div class="config-row">
+          <label>Consec Loss Throttle:</label>
+          <input type="number" class="config-input" id="cfgConsecLoss" value="5" min="1" max="20" step="1" onchange="saveSettings()">
+        </div>
+        <div style="margin-top:12px">
+          <div class="section-label">Conditional Take-Profit</div>
+        </div>
+        <div class="config-row">
+          <label>TP Min Price:</label>
+          <input type="number" class="config-input" id="cfgTpMinPrice" value="0.85" min="0.5" max="0.99" step="0.01" onchange="saveSettings()">
+        </div>
+        <div class="config-row">
+          <label>TP Edge Threshold:</label>
+          <input type="number" class="config-input" id="cfgTpEdge" value="0" min="-0.5" max="0.5" step="0.01" onchange="saveSettings()">
+        </div>
+        <div style="font-size:10px;color:var(--dim);margin-top:8px;line-height:1.5">
+          Exit when market price ≥ TP Min Price<br>AND edge drops below TP Edge Threshold
+        </div>
+      </div>
+    </div>
+
+    <!-- Dead Hours -->
+    <div class="card two-cols">
+      <div class="card-title">
+        Dead Hours (UTC) — Click to toggle
+        <span style="font-size:10px;color:var(--dim);font-weight:400;letter-spacing:0">Red = no trading</span>
+      </div>
+      <div class="card-body">
+        <div class="hours-grid" id="hoursGrid"></div>
+      </div>
+    </div>
+
+    <!-- Controls & Export -->
+    <div class="card">
+      <div class="card-title">Controls & Export</div>
+      <div class="card-body">
+        <div class="section-label">Trading Controls</div>
+        <div class="controls" style="margin-bottom:16px;">
+          <button class="btn" id="btnPause" onclick="togglePause()">⏸ Pause</button>
+          <button class="btn btn-danger" onclick="resetSession()">↻ Reset Session</button>
+          <button class="btn" onclick="resetCircuitBreaker()">⚡ Reset CB</button>
+        </div>
+        <div class="section-label">Data Export</div>
+        <button class="export-btn" onclick="exportDecisions()">📊 Export Decisions (CSV)</button>
+        <button class="export-btn" onclick="exportTrades()">📈 Export Trades (CSV)</button>
+      </div>
+    </div>
+
+  </div>
 </div>
 
 <!-- ─── Main Grid ─── -->
@@ -379,40 +579,6 @@
     </div>
   </div>
 
-  <!-- CONTROLS -->
-  <div class="card">
-    <div class="card-title">Controls</div>
-    <div class="card-body">
-      <div class="controls" style="margin-bottom:12px;">
-        <button class="btn" id="btnPause" onclick="togglePause()">⏸ Pause</button>
-        <button class="btn btn-danger" onclick="resetSession()">↻ Reset Session</button>
-      </div>
-      <div class="config-row">
-        <label>Min Trade Score:</label>
-        <input type="number" class="config-input" id="cfgMinScore" value="60" min="0" max="100" onchange="updateConfig()">
-      </div>
-      <div class="config-row">
-        <label>Sizing Multiplier:</label>
-        <input type="number" class="config-input" id="cfgSizing" value="1.0" min="0" max="5" step="0.1" onchange="updateConfig()">
-      </div>
-      <div class="config-row">
-        <label>Max Positions:</label>
-        <input type="number" class="config-input" id="cfgMaxPos" value="5" min="1" max="20" onchange="updateConfig()">
-      </div>
-    </div>
-  </div>
-
-  <!-- DEAD HOURS -->
-  <div class="card two-cols">
-    <div class="card-title">
-      Dead Hours (UTC) — Click to toggle
-      <span style="font-size:10px;color:var(--dim);font-weight:400;letter-spacing:0">Red = no trading</span>
-    </div>
-    <div class="card-body">
-      <div class="hours-grid" id="hoursGrid"></div>
-    </div>
-  </div>
-
   <!-- SUBSYSTEM HEALTH -->
   <div class="card">
     <div class="card-title">System Health</div>
@@ -420,7 +586,7 @@
       <div style="display:flex;flex-direction:column;gap:10px;">
         <div class="health-item"><span class="health-dot" id="healthBinance"></span> Binance WS <span id="healthBinanceAge" style="color:var(--dim);font-size:10px;margin-left:auto"></span></div>
         <div class="health-item"><span class="health-dot" id="healthPoly"></span> Polymarket WS <span id="healthPolyAge" style="color:var(--dim);font-size:10px;margin-left:auto"></span></div>
-        <div class="health-item"><span class="health-dot" id="healthSpy"></span> Spy Server <span id="healthSpyAge" style="color:var(--dim);font-size:10px;margin-left:auto"></span></div>
+        <div class="health-item"><span class="health-dot" id="healthWhale"></span> Whale Poller <span id="healthWhaleAge" style="color:var(--dim);font-size:10px;margin-left:auto"></span></div>
         <div class="health-item"><span class="health-dot" id="healthScanner"></span> Scanner <span id="healthScannerAge" style="color:var(--dim);font-size:10px;margin-left:auto"></span></div>
       </div>
     </div>
@@ -443,7 +609,7 @@
     <div class="card-body scroll-box">
       <table class="tbl" id="scoresTable">
         <thead>
-          <tr><th>Time</th><th>Asset</th><th>Side</th><th>Score</th><th>Action</th><th>Edge</th><th>MidE</th><th>Mom</th><th>Entry</th><th>Secs</th><th>Size</th></tr>
+          <tr><th>Time</th><th>Contract</th><th>Asset</th><th>Side</th><th>Score</th><th>Action</th><th>Edge</th><th>MidE</th><th>Mom</th><th>Entry</th><th>Secs</th><th>Size</th></tr>
         </thead>
         <tbody></tbody>
       </table>
@@ -455,7 +621,7 @@
     <div class="card-title">Open Positions <span id="openCount" style="color:var(--dim);font-weight:400">0</span></div>
     <div class="card-body scroll-box" style="max-height:200px;">
       <table class="tbl" id="openTable">
-        <thead><tr><th>ID</th><th>Asset</th><th>Side</th><th>Entry</th><th>$</th><th>Score</th><th>Age</th></tr></thead>
+        <thead><tr><th>ID</th><th>Contract</th><th>Asset</th><th>Side</th><th>Entry</th><th>$</th><th>Score</th><th>Age</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -466,7 +632,7 @@
     <div class="card-title">Closed Positions (Recent)</div>
     <div class="card-body scroll-box" style="max-height:250px;">
       <table class="tbl" id="closedTable">
-        <thead><tr><th>Time</th><th>Asset</th><th>Side</th><th>Entry</th><th>Exit</th><th>PnL</th><th>Score</th><th>Status</th><th>Duration</th></tr></thead>
+        <thead><tr><th>Time</th><th>Contract</th><th>Asset</th><th>Side</th><th>Entry</th><th>Exit</th><th>PnL</th><th>Score</th><th>Status</th><th>Duration</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -475,10 +641,20 @@
 </div>
 
 <script>
+// ─── Auth Token ──────────────────────────────────────────────────────────────
+const token = new URLSearchParams(location.search).get('token') || localStorage.getItem('rothstein_token');
+if (token) localStorage.setItem('rothstein_token', token);
+
+function authHeaders() {
+  return token ? { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+}
+
 // ─── WebSocket Connection ───────────────────────────────────────────────────
-const wsUrl = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
+const wsBase = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
+const wsUrl = token ? wsBase + '?token=' + token : wsBase;
 let ws = null;
 let reconnectMs = 1000;
+let lastState = null;
 
 function connectWs() {
   ws = new WebSocket(wsUrl);
@@ -496,11 +672,88 @@ function connectWs() {
   ws.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);
-      if (msg.type === 'state') updateDashboard(msg);
+      if (msg.type === 'state') {
+        lastState = msg;
+        updateDashboard(msg);
+      }
     } catch {}
   };
 }
 connectWs();
+
+// ─── Settings Panel ─────────────────────────────────────────────────────────
+let settingsOpen = false;
+let configSynced = false;
+
+function toggleSettings() {
+  const panel = document.getElementById('settingsPanel');
+  const btn = document.getElementById('btnSettings');
+  settingsOpen = !settingsOpen;
+  if (settingsOpen) {
+    panel.classList.add('show');
+    btn.classList.add('active');
+    btn.textContent = '✕ Close Settings';
+    // Sync current values on open
+    if (lastState && lastState.runtimeConfig) syncConfigInputs(lastState.runtimeConfig);
+  } else {
+    panel.classList.remove('show');
+    btn.classList.remove('active');
+    btn.textContent = '⚙ Settings';
+  }
+}
+
+function syncConfigInputs(cfg) {
+  const safeSet = (id, val) => {
+    const el = document.getElementById(id);
+    if (el && document.activeElement !== el) {
+      el.value = val;
+    }
+  };
+  safeSet('cfgMinEdge', cfg.minEdgeVsSpot);
+  safeSet('cfgMinPrice', cfg.minPrice);
+  safeSet('cfgMaxPrice', cfg.maxPrice);
+  safeSet('cfgMaxSpread', cfg.maxBookSpread);
+  safeSet('cfgMinSecs', cfg.minSecsRemaining);
+  safeSet('cfgMaxSecs', cfg.maxSecsRemaining);
+  safeSet('cfgMinScore', cfg.minTradeScore);
+  safeSet('cfgSizing', cfg.sizingMultiplier);
+  safeSet('cfgMaxPos', cfg.maxConcurrentPositions);
+  safeSet('cfgMaxRisk', cfg.maxTotalAtRisk);
+  safeSet('cfgConsecLoss', cfg.consecutiveLossThrottle);
+  safeSet('cfgTpMinPrice', cfg.conditionalTpMinPrice);
+  safeSet('cfgTpEdge', cfg.conditionalTpEdgeThreshold);
+}
+
+let saveTimeout = null;
+function saveSettings() {
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    const body = {
+      minEdgeVsSpot: parseFloat(document.getElementById('cfgMinEdge').value),
+      minPrice: parseFloat(document.getElementById('cfgMinPrice').value),
+      maxPrice: parseFloat(document.getElementById('cfgMaxPrice').value),
+      maxBookSpread: parseFloat(document.getElementById('cfgMaxSpread').value),
+      minSecsRemaining: parseInt(document.getElementById('cfgMinSecs').value),
+      maxSecsRemaining: parseInt(document.getElementById('cfgMaxSecs').value),
+      minTradeScore: parseInt(document.getElementById('cfgMinScore').value),
+      sizingMultiplier: parseFloat(document.getElementById('cfgSizing').value),
+      maxConcurrentPositions: parseInt(document.getElementById('cfgMaxPos').value),
+      maxTotalAtRisk: parseFloat(document.getElementById('cfgMaxRisk').value),
+      consecutiveLossThrottle: parseInt(document.getElementById('cfgConsecLoss').value),
+      conditionalTpMinPrice: parseFloat(document.getElementById('cfgTpMinPrice').value),
+      conditionalTpEdgeThreshold: parseFloat(document.getElementById('cfgTpEdge').value),
+    };
+    fetch('/api/config', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(body)
+    }).then(() => {
+      const saved = document.getElementById('settingsSaved');
+      saved.classList.add('show');
+      setTimeout(() => saved.classList.remove('show'), 1500);
+    });
+  }, 300);
+}
 
 // ─── Dead Hours Grid ────────────────────────────────────────────────────────
 let currentDeadHours = [15, 16];
@@ -529,7 +782,7 @@ function toggleDeadHour(h) {
   renderHoursGrid();
   fetch('/api/config', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
     body: JSON.stringify({ deadHours: currentDeadHours })
   });
 }
@@ -537,25 +790,22 @@ renderHoursGrid();
 
 // ─── API Actions ────────────────────────────────────────────────────────────
 function togglePause() {
-  fetch('/api/pause', { method: 'POST' });
+  fetch('/api/pause', { method: 'POST', headers: authHeaders() });
 }
 function resetSession() {
-  if (confirm('Reset all session stats?')) fetch('/api/reset-session', { method: 'POST' });
+  if (confirm('Reset all session stats?')) fetch('/api/reset-session', { method: 'POST', headers: authHeaders() });
 }
 function resetCircuitBreaker() {
-  fetch('/api/reset-circuit-breaker', { method: 'POST' });
+  fetch('/api/reset-circuit-breaker', { method: 'POST', headers: authHeaders() });
 }
-function updateConfig() {
-  const body = {
-    minTradeScore: parseInt(document.getElementById('cfgMinScore').value),
-    sizingMultiplier: parseFloat(document.getElementById('cfgSizing').value),
-    maxConcurrentPositions: parseInt(document.getElementById('cfgMaxPos').value),
-  };
-  fetch('/api/config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
+
+function exportDecisions() {
+  const url = '/api/export/decisions' + (token ? '?token=' + token : '');
+  window.open(url, '_blank');
+}
+function exportTrades() {
+  const url = '/api/export/trades' + (token ? '?token=' + token : '');
+  window.open(url, '_blank');
 }
 
 // ─── Dashboard Update ───────────────────────────────────────────────────────
@@ -588,15 +838,25 @@ function updateDashboard(s) {
   document.getElementById('statDrawdown').textContent = '-$' + (st.maxDrawdown || 0).toFixed(2);
   document.getElementById('statStreak').textContent = st.consecutiveLosses || 0;
 
-  // Paused banner — check BOTH dead hours and manual pause
+  // Paused banner
   const isDeadHour = s.deadHours && s.deadHours.includes(new Date().getUTCHours());
-  const isManualPaused = s.paused === true;  // from runtime config payload
+  const isManualPaused = s.paused === true;
   const showPaused = isDeadHour || isManualPaused;
   document.getElementById('pausedBanner').className = 'paused-banner' + (showPaused ? ' show' : '');
   if (isManualPaused) {
     document.getElementById('pausedBanner').textContent = '⏸ PAUSED — Trading manually suspended from dashboard';
   } else if (isDeadHour) {
     document.getElementById('pausedBanner').textContent = '⛔ DEAD HOUR — Trading suspended (UTC ' + new Date().getUTCHours() + ':00)';
+  }
+
+  // Pause button state
+  const btnPause = document.getElementById('btnPause');
+  if (s.paused) {
+    btnPause.textContent = '▶ Resume';
+    btnPause.className = 'btn btn-success';
+  } else {
+    btnPause.textContent = '⏸ Pause';
+    btnPause.className = 'btn';
   }
 
   // Circuit breaker
@@ -616,10 +876,20 @@ function updateDashboard(s) {
     renderHoursGrid();
   }
 
+  // Sync settings inputs (only when not editing)
+  if (s.runtimeConfig) {
+    if (!configSynced) {
+      syncConfigInputs(s.runtimeConfig);
+      configSynced = true;
+    } else if (settingsOpen) {
+      syncConfigInputs(s.runtimeConfig);
+    }
+  }
+
   // Health
   setHealth('healthBinance', s.subsystemHealth?.binanceWs, 'healthBinanceAge');
   setHealth('healthPoly', s.subsystemHealth?.polymarketWs, 'healthPolyAge');
-  setHealth('healthSpy', s.subsystemHealth?.spyWs, 'healthSpyAge');
+  setHealthWhale('healthWhale', s.subsystemHealth?.whalePoller, 'healthWhaleAge');
   setHealthScanner('healthScanner', s.subsystemHealth?.scanner, 'healthScannerAge');
 
   // Contracts
@@ -661,6 +931,17 @@ function setHealth(dotId, data, ageId) {
   age.textContent = ageSec < 999 ? ageSec + 's ago' : '—';
 }
 
+function setHealthWhale(dotId, data, ageId) {
+  const dot = document.getElementById(dotId);
+  const age = document.getElementById(ageId);
+  if (!data) { dot.className = 'health-dot error'; age.textContent = 'N/A'; return; }
+  const ageSec = data.lastPoll > 0 ? Math.round((Date.now() - data.lastPoll) / 1000) : 999;
+  if (data.active && ageSec < 30) { dot.className = 'health-dot ok'; }
+  else if (data.active) { dot.className = 'health-dot warn'; }
+  else { dot.className = 'health-dot error'; }
+  age.textContent = data.active ? (ageSec < 999 ? ageSec + 's ago (' + data.walletsPolled + ' polls)' : '—') : 'inactive';
+}
+
 function setHealthScanner(dotId, data, ageId) {
   const dot = document.getElementById(dotId);
   const age = document.getElementById(ageId);
@@ -694,6 +975,25 @@ function fmtTime(ts) {
   return new Date(ts).toLocaleTimeString('en-US', { hour12: false });
 }
 
+// Extract 5-min contract period from title or timestamps
+function fmtContract(title, endTs, secsRem, ts) {
+  // Try endTs first (most accurate)
+  let endTime = endTs || null;
+  // Fallback: compute from decision time + secsRemaining
+  if (!endTime && ts && secsRem) endTime = ts + secsRem * 1000;
+
+  if (endTime) {
+    const end = new Date(endTime);
+    const start = new Date(endTime - 300000); // 5 min window
+    const f = d => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return f(start) + '–' + f(end);
+  }
+
+  // Last resort: extract from title
+  const m = title && title.match(/at\s+(\d{1,2}:\d{2}\s*[AP]M)/i);
+  return m ? m[1].trim() : '—';
+}
+
 // ─── Renderers ──────────────────────────────────────────────────────────────
 function renderContracts(contracts) {
   document.getElementById('contractCount').textContent = contracts.length;
@@ -714,7 +1014,8 @@ function renderScores(scores) {
   for (const d of recent) {
     const tr = document.createElement('tr');
     const actionColor = d.action === 'TRADE' ? 'var(--green)' : d.action === 'LOG_ONLY' ? 'var(--gold)' : 'var(--dim)';
-    tr.innerHTML = `<td>${fmtTime(d.ts)}</td><td style="color:var(--gold)">${d.asset}</td><td>${d.side}</td><td><span class="score-bar"><span class="score-bar-fill ${scoreBarClass(d.score)}" style="width:${d.score}%"></span></span><span style="color:${scoreColor(d.score)}">${d.score}</span></td><td style="color:${actionColor};font-weight:700">${d.action}</td><td>${d.features?.edgeVsSpot?.toFixed(3)||'—'}</td><td>${d.features?.midEdge?.toFixed(3)||'—'}</td><td>${d.features?.momentumAligned?'✓':'✗'}</td><td>${d.entryPrice?.toFixed(3)||'—'}</td><td>${Math.round(d.secsRemaining)}s</td><td>${d.sizeUsd ? '$'+d.sizeUsd : '—'}</td>`;
+    const period = fmtContract(d.title, null, d.secsRemaining, d.ts);
+    tr.innerHTML = `<td>${fmtTime(d.ts)}</td><td style="color:var(--cyan);font-size:10px">${period}</td><td style="color:var(--gold)">${d.asset}</td><td>${d.side}</td><td><span class="score-bar"><span class="score-bar-fill ${scoreBarClass(d.score)}" style="width:${d.score}%"></span></span><span style="color:${scoreColor(d.score)}">${d.score}</span></td><td style="color:${actionColor};font-weight:700">${d.action}</td><td>${d.features?.edgeVsSpot?.toFixed(3)||'—'}</td><td>${d.features?.midEdge?.toFixed(3)||'—'}</td><td>${d.features?.momentumAligned?'✓':'✗'}</td><td>${d.entryPrice?.toFixed(3)||'—'}</td><td>${Math.round(d.secsRemaining)}s</td><td>${d.sizeUsd ? '$'+d.sizeUsd : '—'}</td>`;
     tbody.appendChild(tr);
   }
 }
@@ -726,7 +1027,8 @@ function renderOpen(positions) {
   for (const p of positions) {
     const t = p.trade;
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td style="color:var(--dim)">${t.id.slice(-6)}</td><td style="color:var(--gold)">${t.asset}</td><td>${t.side}</td><td>${t.entryPrice.toFixed(3)}</td><td>$${t.sizeUsd}</td><td style="color:${scoreColor(t.score)}">${t.score}</td><td>${timeAgo(p.openedAt)}</td>`;
+    const period = fmtContract(t.title, t.endTs, null, null);
+    tr.innerHTML = `<td style="color:var(--dim)">${t.id.slice(-6)}</td><td style="color:var(--cyan);font-size:10px">${period}</td><td style="color:var(--gold)">${t.asset}</td><td>${t.side}</td><td>${t.entryPrice.toFixed(3)}</td><td>$${t.sizeUsd}</td><td style="color:${scoreColor(t.score)}">${t.score}</td><td>${timeAgo(p.openedAt)}</td>`;
     tbody.appendChild(tr);
   }
 }
@@ -741,7 +1043,8 @@ function renderClosed(positions) {
     const pnlColor = (p.pnl||0) >= 0 ? 'var(--green)' : 'var(--red)';
     const statusColor = p.status === 'RESOLVED_WIN' ? 'var(--green)' : p.status === 'EXITED_TP' ? 'var(--cyan)' : 'var(--red)';
     const dur = p.closedAt && p.openedAt ? Math.round((p.closedAt - p.openedAt) / 1000) : '—';
-    tr.innerHTML = `<td>${fmtTime(p.closedAt||p.openedAt)}</td><td style="color:var(--gold)">${t.asset}</td><td>${t.side}</td><td>${t.entryPrice.toFixed(3)}</td><td>${(p.exitPrice||0).toFixed(3)}</td><td style="color:${pnlColor};font-weight:700">${(p.pnl||0)>=0?'+':''}$${(p.pnl||0).toFixed(4)}</td><td style="color:${scoreColor(t.score)}">${t.score}</td><td style="color:${statusColor}">${p.status}</td><td>${dur}s</td>`;
+    const period = fmtContract(t.title, t.endTs, null, null);
+    tr.innerHTML = `<td>${fmtTime(p.closedAt||p.openedAt)}</td><td style="color:var(--cyan);font-size:10px">${period}</td><td style="color:var(--gold)">${t.asset}</td><td>${t.side}</td><td>${t.entryPrice.toFixed(3)}</td><td>${(p.exitPrice||0).toFixed(3)}</td><td style="color:${pnlColor};font-weight:700">${(p.pnl||0)>=0?'+':''}$${(p.pnl||0).toFixed(4)}</td><td style="color:${scoreColor(t.score)}">${t.score}</td><td style="color:${statusColor}">${p.status}</td><td>${dur}s</td>`;
     tbody.appendChild(tr);
   }
 }

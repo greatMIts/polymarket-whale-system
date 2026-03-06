@@ -1,8 +1,7 @@
-// ─── Layer 1: Whale Listener ────────────────────────────────────────────────
-// Connects to spy server WS and receives whale trade events as bonus signals.
-// Graceful degradation: ROTHSTEIN continues without whales if spy is down.
+// ─── Layer 1: Whale Listener (Direct Polling) ──────────────────────────────
+// Polls Polymarket Data API for whale trades directly — no spy server dependency.
+// Staggered polling across all tracked wallets for rate-limit friendliness.
 
-import WebSocket from "ws";
 import { WhaleSignal, Side } from "./types";
 import { CONFIG } from "./config";
 import { logger } from "./logger";
@@ -10,17 +9,19 @@ import { logger } from "./logger";
 // ─── State ──────────────────────────────────────────────────────────────────
 
 const recentWhales = new Map<string, WhaleSignal[]>();  // conditionId → signals
-let ws: WebSocket | null = null;
-let connected = false;
-let reconnectMs = 3000;
-let lastMessage = 0;
-let pingInterval: NodeJS.Timeout | null = null;
+let pollInterval: NodeJS.Timeout | null = null;
+let active = false;
+let lastPollTime = 0;
+let walletsPolled = 0;          // polls since last reset (resets every 60s)
+let walletsPolledResetAt = 0;   // next reset timestamp
+
+// Track last seen trade timestamp per wallet to avoid processing old trades
+const lastSeenTs = new Map<string, number>();
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 export function getWhaleActivity(conditionId: string): WhaleSignal[] {
   const signals = recentWhales.get(conditionId) || [];
-  // Only return non-expired signals
   const cutoff = Date.now() - CONFIG.whaleSignalExpireMs;
   return signals.filter(s => s.ts > cutoff);
 }
@@ -41,125 +42,143 @@ export function getAllRecentActivity(limit: number = 50): WhaleSignal[] {
   return all.slice(0, limit);
 }
 
-export function isConnected(): boolean { return connected; }
-export function getLastHeartbeat(): number { return lastMessage; }
+export function isActive(): boolean { return active; }
+export function getLastPollTime(): number { return lastPollTime; }
+export function getWalletsPolled(): number { return walletsPolled; }
 
-// ─── Connection ─────────────────────────────────────────────────────────────
+// ─── Polling ────────────────────────────────────────────────────────────────
 
-export function connect(): void {
-  if (ws) {
-    try { ws.terminate(); } catch {}
-  }
-  connected = false;
+export function start(): void {
+  if (active) return;
+  active = true;
 
-  try {
-    ws = new WebSocket(CONFIG.spyServerUrl);
-  } catch (e: any) {
-    logger.warn("whale", `Cannot connect to spy server: ${e.message}`);
-    scheduleReconnect();
+  const wallets = CONFIG.trackedWallets as readonly { address: string; label: string }[];
+  if (!wallets || wallets.length === 0) {
+    logger.warn("whale", "No wallets configured for polling");
     return;
   }
 
-  ws.on("open", () => {
-    connected = true;
-    reconnectMs = 3000;
-    logger.info("whale", `Connected to spy server at ${CONFIG.spyServerUrl}`);
+  logger.info("whale", `Starting whale poller for ${wallets.length} wallets`);
 
-    // PING keepalive every 30s — spy server may drop idle connections
-    if (pingInterval) clearInterval(pingInterval);
-    pingInterval = setInterval(() => {
-      if (ws && connected) {
-        try { ws.ping(); } catch {}
+  // Initialize lastSeenTs for each wallet
+  for (const w of wallets) {
+    if (!lastSeenTs.has(w.address)) {
+      lastSeenTs.set(w.address, Date.now() - CONFIG.whaleSignalExpireMs);
+    }
+  }
+
+  // Staggered polling: distribute wallets across the poll interval
+  let walletIdx = 0;
+  const staggerMs = Math.floor(CONFIG.whalePollMs / wallets.length);
+
+  pollInterval = setInterval(() => {
+    if (!active) return;
+    const wallet = wallets[walletIdx % wallets.length];
+    walletIdx++;
+    pollWallet(wallet.address, wallet.label).catch(() => {});
+  }, staggerMs);
+
+  // Also do an initial poll of all wallets
+  for (let i = 0; i < wallets.length; i++) {
+    setTimeout(() => {
+      if (!active) return;
+      pollWallet(wallets[i].address, wallets[i].label).catch(() => {});
+    }, i * 200);  // stagger initial polls by 200ms
+  }
+}
+
+async function pollWallet(address: string, label: string): Promise<void> {
+  try {
+    const url = `${CONFIG.dataApi}/activity?user=${address}&limit=20&type=TRADE&sortBy=TIMESTAMP&sortDirection=DESC`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      logger.debug("whale", `Poll failed for ${label}: HTTP ${res.status}`);
+      return;
+    }
+
+    const trades = (await res.json()) as any[];
+    lastPollTime = Date.now();
+    // Reset counter every 60s so it shows "polls per minute" — meaningful metric
+    if (Date.now() > walletsPolledResetAt) {
+      walletsPolled = 0;
+      walletsPolledResetAt = Date.now() + 60_000;
+    }
+    walletsPolled++;
+
+    const cutoff = Date.now() - CONFIG.whaleSignalExpireMs;
+    const walletLastSeen = lastSeenTs.get(address) || cutoff;
+
+    for (const t of trades) {
+      const tradeTs = new Date(t.timestamp || t.ts).getTime();
+      if (isNaN(tradeTs) || tradeTs <= walletLastSeen || tradeTs < cutoff) continue;
+
+      const conditionId = t.conditionId || t.condition_id;
+      if (!conditionId) continue;
+
+      const tier = CONFIG.walletTiers[label] || 3;
+      const outcome = t.outcome || t.side || "";
+      const usdcSize = parseFloat(t.usdcSize || t.size || t.amount || "0") || 0;
+      const price = parseFloat(t.price || "0") || 0;
+
+      const signal: WhaleSignal = {
+        ts: tradeTs,
+        wallet: address,
+        walletLabel: label,
+        side: (outcome.toLowerCase().includes("up") ? "Up" : "Down") as Side,
+        outcome,
+        price,
+        usdcSize,
+        conditionId,
+        tier,
+      };
+
+      if (!recentWhales.has(conditionId)) {
+        recentWhales.set(conditionId, []);
       }
-    }, 30_000);
-  });
+      const existing = recentWhales.get(conditionId)!;
 
-  ws.on("message", (raw) => {
-    lastMessage = Date.now();
-    try {
-      const msg = JSON.parse(raw.toString());
-      if (msg.type !== "state") return;
-
-      // Extract whale trades from spy server's state broadcast
-      const trades = msg.recentTrades || [];
-      processWhaleTrades(trades);
-    } catch {}
-  });
-
-  ws.on("close", () => {
-    connected = false;
-    if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
-    logger.warn("whale", "Spy server disconnected");
-    scheduleReconnect();
-  });
-
-  ws.on("error", (e: Error) => {
-    logger.debug("whale", `Spy server error: ${e.message}`);
-  });
-}
-
-function scheduleReconnect(): void {
-  setTimeout(() => connect(), reconnectMs);
-  reconnectMs = Math.min(reconnectMs * 2, 60_000);
-}
-
-function processWhaleTrades(trades: any[]): void {
-  const now = Date.now();
-  const cutoff = now - CONFIG.whaleSignalExpireMs;
-
-  // Only process recent trades (last 2 minutes)
-  for (const t of trades) {
-    const tradeTs = new Date(t.ts).getTime();
-    if (tradeTs < cutoff) continue;
-
-    const conditionId = t.conditionId;
-    if (!conditionId) continue;
-
-    const walletLabel = t.walletLabel || "";
-    const tier = CONFIG.walletTiers[walletLabel] || 3;
-
-    const signal: WhaleSignal = {
-      ts: tradeTs,
-      wallet: t.wallet || "",
-      walletLabel,
-      side: (t.outcome === "Up" ? "Up" : "Down") as Side,
-      outcome: t.outcome || "",
-      price: parseFloat(t.price) || 0,
-      usdcSize: parseFloat(t.usdcSize) || 0,
-      conditionId,
-      tier,
-    };
-
-    if (!recentWhales.has(conditionId)) {
-      recentWhales.set(conditionId, []);
+      // Dedup by wallet + timestamp
+      const isDupe = existing.some(s =>
+        s.walletLabel === signal.walletLabel && Math.abs(s.ts - signal.ts) < 2000
+      );
+      if (!isDupe) {
+        existing.push(signal);
+        logger.debug("whale", `${label} traded ${outcome} on ${conditionId.slice(0, 8)}... $${usdcSize.toFixed(0)} @ ${price.toFixed(2)}`);
+      }
     }
-    const existing = recentWhales.get(conditionId)!;
 
-    // Dedup by wallet + timestamp
-    const isDupe = existing.some(s =>
-      s.walletLabel === signal.walletLabel && Math.abs(s.ts - signal.ts) < 2000
-    );
-    if (!isDupe) {
-      existing.push(signal);
+    // Update last seen timestamp
+    if (trades.length > 0) {
+      const newestTs = Math.max(...trades.map((t: any) => new Date(t.timestamp || t.ts).getTime()).filter((n: number) => !isNaN(n)));
+      if (newestTs > walletLastSeen) {
+        lastSeenTs.set(address, newestTs);
+      }
     }
-  }
 
-  // Cleanup expired entries
-  for (const [condId, signals] of recentWhales) {
-    const fresh = signals.filter(s => s.ts > cutoff);
-    if (fresh.length === 0) {
-      recentWhales.delete(condId);
-    } else {
-      recentWhales.set(condId, fresh);
+    // Cleanup expired entries
+    for (const [condId, signals] of recentWhales) {
+      const fresh = signals.filter(s => s.ts > cutoff);
+      if (fresh.length === 0) {
+        recentWhales.delete(condId);
+      } else {
+        recentWhales.set(condId, fresh);
+      }
     }
+  } catch (e: any) {
+    logger.debug("whale", `Poll error for ${label}: ${e.message}`);
   }
 }
 
-export function disconnect(): void {
-  if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
-  if (ws) {
-    try { ws.terminate(); } catch {}
-    ws = null;
-    connected = false;
+export function stop(): void {
+  active = false;
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
   }
 }
+
+// Legacy compat — these are no longer meaningful but prevent import errors
+export function isConnected(): boolean { return active; }
+export function getLastHeartbeat(): number { return lastPollTime; }
+export function connect(): void { start(); }
+export function disconnect(): void { stop(); }

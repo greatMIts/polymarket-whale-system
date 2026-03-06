@@ -42,8 +42,12 @@ export function isConnected(): boolean {
   return wsReady;
 }
 
+let lastWsMessage = 0;
+
 export function getLastHeartbeat(): number {
-  // Return the most recent book update time
+  // Return the most recent WS message time (book update or any message)
+  if (lastWsMessage > 0) return lastWsMessage;
+  // Fallback: check book update times
   let latest = 0;
   for (const b of books.values()) {
     if (b.lastUpdate > latest) latest = b.lastUpdate;
@@ -74,19 +78,26 @@ export function subscribe(tokenIds: string[]): void {
   logger.debug("polybook", `Subscribed ${newTokens.length} tokens (total: ${subscribedTokens.size})`);
 }
 
+/**
+ * Unsubscribe a single token — removes from tracking sets and book map.
+ * Called when contracts expire and are cleaned from the cache.
+ */
+export function unsubscribe(tokenId: string): void {
+  subscribedTokens.delete(tokenId);
+  books.delete(tokenId);
+  restFetchTimes.delete(tokenId);
+}
+
 function sendSubscribe(tokenIds: string[]): void {
-  if (!ws || !wsReady) return;
-  // Polymarket WS subscription format
-  for (const tokenId of tokenIds) {
-    try {
-      ws.send(JSON.stringify({
-        auth: {},
-        markets: [tokenId],
-        assets_ids: [tokenId],
-        type: "market",
-      }));
-    } catch {}
-  }
+  if (!ws || !wsReady || tokenIds.length === 0) return;
+  // Polymarket market channel: batch all token IDs in one message
+  // No auth field (that's user channel only), no markets field
+  try {
+    ws.send(JSON.stringify({
+      assets_ids: tokenIds,
+      type: "market",
+    }));
+  } catch {}
 }
 
 // ─── Connection ─────────────────────────────────────────────────────────────
@@ -102,32 +113,33 @@ export function connect(): void {
   ws.on("open", () => {
     wsReady = true;
     reconnectMs = 1000;
+    lastWsMessage = Date.now();
     logger.info("polybook", "WS connected");
 
-    // Start PING keepalive every 30s to prevent server-side idle disconnect
+    // Polymarket requires application-level PING text every 10s (NOT WS protocol ping)
     if (pingInterval) clearInterval(pingInterval);
     pingInterval = setInterval(() => {
       if (ws && wsReady) {
-        try { ws.ping(); } catch {}
+        try { ws.send("PING"); } catch {}
       }
-    }, 30_000);
+    }, 10_000);
 
-    // Re-subscribe all known tokens
-    if (subscribedTokens.size > 0) {
-      sendSubscribe([...subscribedTokens]);
-    }
-
-    // Flush pending subscriptions
-    if (pendingSubs.length > 0) {
-      const pending = [...pendingSubs];
-      pendingSubs = [];
-      sendSubscribe(pending);
+    // Re-subscribe all known tokens in one batch
+    const allTokens = [...subscribedTokens, ...pendingSubs];
+    pendingSubs = [];
+    if (allTokens.length > 0) {
+      sendSubscribe(allTokens);
     }
   });
 
   ws.on("message", (raw) => {
+    lastWsMessage = Date.now();
     try {
-      const msgs = JSON.parse(raw.toString());
+      const text = raw.toString();
+      // Handle PONG heartbeat response
+      if (text === "PONG") return;
+
+      const msgs = JSON.parse(text);
       const arr = Array.isArray(msgs) ? msgs : [msgs];
 
       for (const msg of arr) {

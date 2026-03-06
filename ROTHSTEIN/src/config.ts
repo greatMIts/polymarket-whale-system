@@ -12,16 +12,34 @@ export const CONFIG = {
   // Server
   port: parseInt(process.env.PORT || "3334"),
   mode: (process.env.MODE || "PAPER") as Mode,
-  spyServerUrl: process.env.SPY_SERVER_URL || "ws://polymarket-whale-spy.railway.internal:3333",
+  dashboardPassword: process.env.DASHBOARD_PASSWORD || "7777777lL",
 
   // Data sources
   binanceWsUrl: "wss://stream.binance.com:9443/stream?streams=btcusdt@trade/ethusdt@trade",
   polymarketWsUrl: "wss://ws-subscriptions-clob.polymarket.com/ws/market",
   gammaApi: "https://gamma-api.polymarket.com",
   clobApi: "https://clob.polymarket.com",
+  dataApi: "https://data-api.polymarket.com",
+
+  // Whale polling
+  whalePollMs: 5_000,             // poll each wallet every 5s (staggered)
+  trackedWallets: [
+    { address: "0x571c285a83eba5322b5f916ba681669dc368a61f", label: "0x571c" },
+    { address: "0xf6963d4cdbb6f26d753bda303e9513132afb1b7d", label: "0xf696" },
+    { address: "0x0ea574f3204c5c9c0cdead90392ea0990f4d17e4", label: "0x0ea5" },
+    { address: "0x63ce342161250d705dc0b16df89036c8e5f9ba9a", label: "0x63ce" },
+    { address: "0x37c94ea1b44e01b18a1ce3ab6f8002bd6b9d7e6d", label: "0x37c9" },
+    { address: "0x1979ae6b7e6534de9c4539d0c205e582ca637c9d", label: "0x1979" },
+    { address: "0x1d0034134e339a309700ff2d34e99fa2d48b0313", label: "0x1d00" },
+    { address: "0x2d8b401d2f0e6937afebf18e19e11ca568a5260a", label: "0x2d8b" },
+    { address: "0xa9ae84ee529dbec0c6634b08cd97d3f13f7d74f5", label: "0xa9ae" },
+    { address: "0xd7e71e9b1c9d5e428e94906660c5a94537e51150", label: "0xd7e7" },
+    { address: "0x113d4c0b5a6702ab045ea2cba7c3f71d51fc3ce8", label: "0x113d" },
+    { address: "0xe594336603f4fb5d3ba4125a67021ab3b4347052", label: "0xe594" },
+  ] as const,
 
   // Scanning intervals
-  scanIntervalMs: 15_000,         // evaluate all contracts every 15s
+  scanIntervalMs: 1_000,          // evaluate all contracts every 1s
   resolutionCheckMs: 30_000,      // check if open positions resolved
   contractScanMs: 30_000,         // scan Gamma for new contracts
   heartbeatCheckMs: 10_000,       // subsystem health check
@@ -107,6 +125,22 @@ const DEFAULT_RUNTIME: RuntimeConfig = {
   sizingMultiplier: 1.0,
   maxConcurrentPositions: CONFIG.maxConcurrentPositions,
   paused: false,
+
+  // Hard gates
+  minEdgeVsSpot: CONFIG.minEdgeVsSpot,
+  minPrice: CONFIG.minPrice,
+  maxPrice: CONFIG.maxPrice,
+  maxBookSpread: CONFIG.maxBookSpread,
+  minSecsRemaining: CONFIG.minSecsRemaining,
+  maxSecsRemaining: CONFIG.maxSecsRemaining,
+
+  // Risk
+  maxTotalAtRisk: CONFIG.maxTotalAtRisk,
+  consecutiveLossThrottle: CONFIG.consecutiveLossThrottle,
+
+  // Conditional TP
+  conditionalTpMinPrice: CONFIG.conditionalTpMinPrice,
+  conditionalTpEdgeThreshold: CONFIG.conditionalTpEdgeThreshold,
 };
 
 let _runtime: RuntimeConfig = { ...DEFAULT_RUNTIME };

@@ -28,9 +28,7 @@ const circuitBreaker: CircuitBreakerState = {
   sizingMultiplier: 1.0,
 };
 
-// Hourly loss tracking
-let hourlyPnl = 0;
-let hourlyResetAt = Date.now() + 3_600_000;
+// (Hourly loss tracking removed — ROTHSTEIN runs continuously)
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
@@ -103,36 +101,13 @@ export function recordResult(pnl: number, won: boolean): void {
     stats.maxDrawdown = drawdown;
   }
 
-  // Hourly PnL tracking
-  if (Date.now() > hourlyResetAt) {
-    hourlyPnl = 0;
-    hourlyResetAt = Date.now() + 3_600_000;
-  }
-  hourlyPnl += pnl;
-
   // ─── Check circuit breaker triggers ───────────────────────────────────────
-
-  // Session loss limit
-  if (stats.pnl <= CONFIG.sessionLossCircuitBreaker) {
-    triggerCircuitBreaker(
-      `SESSION_LOSS ($${stats.pnl.toFixed(2)} < $${CONFIG.sessionLossCircuitBreaker})`,
-      600_000  // 10 min cooldown
-    );
-    return;
-  }
-
-  // Hourly loss throttle
-  if (hourlyPnl <= CONFIG.hourlyLossThrottle) {
-    triggerThrottle(
-      `HOURLY_LOSS ($${hourlyPnl.toFixed(2)} < $${CONFIG.hourlyLossThrottle})`,
-      0.5,         // reduce sizing by 50%
-      300_000      // 5 min throttle
-    );
-    return;
-  }
+  // Session loss limit and hourly loss throttle REMOVED — ROTHSTEIN runs continuously.
+  // Only consecutive loss throttle remains (reduces sizing, doesn't stop trading).
 
   // Consecutive losses
-  if (stats.consecutiveLosses >= CONFIG.consecutiveLossThrottle) {
+  const runtime = getRuntime();
+  if (stats.consecutiveLosses >= runtime.consecutiveLossThrottle) {
     triggerThrottle(
       `CONSECUTIVE_LOSSES (${stats.consecutiveLosses} in a row)`,
       0.5,         // reduce sizing by 50%
@@ -197,7 +172,8 @@ export function manualReset(): void {
  * Check if total capital at risk is within limits.
  */
 export function checkTotalRisk(currentRiskUsd: number, additionalRiskUsd: number): boolean {
-  return (currentRiskUsd + additionalRiskUsd) <= CONFIG.maxTotalAtRisk;
+  const runtime = getRuntime();
+  return (currentRiskUsd + additionalRiskUsd) <= runtime.maxTotalAtRisk;
 }
 
 /**
@@ -213,8 +189,6 @@ export function resetSession(): void {
   stats.winRate = 0;
   stats.consecutiveLosses = 0;
   stats.startedAt = Date.now();
-  hourlyPnl = 0;
-  hourlyResetAt = Date.now() + 3_600_000;
   resetCircuitBreaker();
   logger.event("risk", "SESSION_RESET");
 }

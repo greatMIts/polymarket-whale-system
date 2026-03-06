@@ -20,6 +20,7 @@ let scanInterval: NodeJS.Timeout | null = null;
 let lastScanTime = 0;
 let scanCount = 0;
 let running = false;
+let scanning = false;  // guard against overlapping scans at 1s interval
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
@@ -52,6 +53,10 @@ export function stop(): void {
 // ─── Single Scan Cycle ──────────────────────────────────────────────────────
 
 async function runScanCycle(): Promise<void> {
+  // Guard against overlapping scans (can happen at 1s interval if cycle takes >1s)
+  if (scanning) return;
+  scanning = true;
+
   const cycleStart = Date.now();
   scanCount++;
 
@@ -69,7 +74,7 @@ async function runScanCycle(): Promise<void> {
     // 3. Get active contracts
     const contracts = contractScanner.getActiveContracts();
     if (contracts.length === 0) {
-      if (scanCount % 20 === 0) {  // log every ~5 min
+      if (scanCount % 300 === 0) {  // log every ~5 min (at 1s interval)
         logger.debug("scanner-loop", "No active contracts found");
       }
       lastScanTime = Date.now();
@@ -83,7 +88,14 @@ async function runScanCycle(): Promise<void> {
     for (const contract of contracts) {
       // Skip if not enough time
       const secsRemaining = (contract.endTs - Date.now()) / 1000;
-      if (secsRemaining < CONFIG.minSecsRemaining) continue;
+      const runtime = getRuntime();
+      if (secsRemaining < runtime.minSecsRemaining) continue;
+
+      // Lazy-fetch strike price (Binance kline at contract window start).
+      // Only fetches once per contract — returns cached value after first success.
+      if (contract.strikePrice === null) {
+        await contractScanner.fetchStrikePrice(contract);
+      }
 
       // Evaluate both Up and Down
       const sides: Side[] = ["Up", "Down"];
@@ -123,8 +135,8 @@ async function runScanCycle(): Promise<void> {
           // LOG_ONLY — worth watching
           decisionsLog.logDecision(contract, side, features, scoring, "LOG_ONLY", 0);
         } else if (scoring.totalScore >= 30) {
-          // SKIP — but log for training data (every 3rd cycle to reduce noise)
-          if (scanCount % 3 === 0) {
+          // SKIP — but log for training data (every 45th cycle to reduce noise at 1s interval)
+          if (scanCount % 45 === 0) {
             decisionsLog.logDecision(contract, side, features, scoring, "SKIP", 0);
           }
         }
@@ -135,13 +147,15 @@ async function runScanCycle(): Promise<void> {
     const elapsed = Date.now() - cycleStart;
     lastScanTime = Date.now();
 
-    // Periodic status log (every ~2 min)
-    if (scanCount % 8 === 0) {
+    // Periodic status log (every ~2 min at 1s interval)
+    if (scanCount % 120 === 0) {
       logger.info("scanner-loop", `Scan #${scanCount}: ${contracts.length} contracts, ${evaluated} evaluations, ${traded} trades (${elapsed}ms)${!canTrade ? ` [BLOCKED: ${blockReason}]` : ""}`);
     }
 
   } catch (e: any) {
     logger.error("scanner-loop", `Scan cycle error: ${e.message}`);
+  } finally {
+    scanning = false;
   }
 }
 
