@@ -93,7 +93,7 @@ function waitForBinance(timeoutMs: number): Promise<void> {
         clearInterval(check);
         const btc = binance.getPrice("BTC");
         const eth = binance.getPrice("ETH");
-        logger.info("boot", `Binance ready! BTC=$${btc?.toFixed(2)} ETH=$${eth?.toFixed(2)}`);
+        logger.info("boot", `Binance ready! BTC=$${btc ? btc.toFixed(2) : 'pending'} ETH=$${eth ? eth.toFixed(2) : 'pending'}`);
         resolve();
       } else if (Date.now() - start > timeoutMs) {
         clearInterval(check);

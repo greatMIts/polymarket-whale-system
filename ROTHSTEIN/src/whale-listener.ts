@@ -14,6 +14,7 @@ let ws: WebSocket | null = null;
 let connected = false;
 let reconnectMs = 3000;
 let lastMessage = 0;
+let pingInterval: NodeJS.Timeout | null = null;
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
@@ -47,6 +48,14 @@ export function connect(): void {
     connected = true;
     reconnectMs = 3000;
     logger.info("whale", `Connected to spy server at ${CONFIG.spyServerUrl}`);
+
+    // PING keepalive every 30s — spy server may drop idle connections
+    if (pingInterval) clearInterval(pingInterval);
+    pingInterval = setInterval(() => {
+      if (ws && connected) {
+        try { ws.ping(); } catch {}
+      }
+    }, 30_000);
   });
 
   ws.on("message", (raw) => {
@@ -63,6 +72,7 @@ export function connect(): void {
 
   ws.on("close", () => {
     connected = false;
+    if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
     logger.warn("whale", "Spy server disconnected");
     scheduleReconnect();
   });
@@ -130,6 +140,7 @@ function processWhaleTrades(trades: any[]): void {
 }
 
 export function disconnect(): void {
+  if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
   if (ws) {
     try { ws.terminate(); } catch {}
     ws = null;

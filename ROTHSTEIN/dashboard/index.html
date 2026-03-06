@@ -476,7 +476,7 @@
 
 <script>
 // ─── WebSocket Connection ───────────────────────────────────────────────────
-const wsUrl = `ws://${location.host}`;
+const wsUrl = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
 let ws = null;
 let reconnectMs = 1000;
 

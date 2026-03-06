@@ -180,31 +180,50 @@ function processMarket(m: any): boolean {
 // ─── Strike Price ───────────────────────────────────────────────────────────
 // Fetches the Binance price at the contract's window start time.
 
+// Klines endpoints with geo-restriction failover (same as binance-feed.ts)
+const KLINES_ENDPOINTS = [
+  "https://data-api.binance.vision/api/v3/klines",
+  "https://api.binance.com/api/v3/klines",
+  "https://api1.binance.com/api/v3/klines",
+  "https://api2.binance.com/api/v3/klines",
+];
+let klinesEndpointIdx = 0;
+
 export async function fetchStrikePrice(contract: ContractInfo): Promise<number | null> {
   if (contract.strikePrice !== null) return contract.strikePrice;
   if (contract.windowStartTs <= 0) return null;
 
-  try {
-    const { data } = await axios.get("https://api.binance.com/api/v3/klines", {
-      params: {
-        symbol: contract.binanceSymbol,
-        interval: "1s",
-        startTime: contract.windowStartTs,
-        limit: 1,
-      },
-      timeout: 5000,
-    });
+  // Try multiple endpoints for geo-restriction failover
+  for (let attempt = 0; attempt < KLINES_ENDPOINTS.length; attempt++) {
+    const endpoint = KLINES_ENDPOINTS[klinesEndpointIdx % KLINES_ENDPOINTS.length];
+    try {
+      const { data } = await axios.get(endpoint, {
+        params: {
+          symbol: contract.binanceSymbol,
+          interval: "1s",
+          startTime: contract.windowStartTs,
+          limit: 1,
+        },
+        timeout: 5000,
+      });
 
-    if (data && data[0]) {
-      const openPrice = parseFloat(data[0][1]);
-      if (openPrice > 0) {
-        // Update cache
-        contract.strikePrice = openPrice;
-        contractCache.set(contract.conditionId, contract);
-        return openPrice;
+      if (data && data[0]) {
+        const openPrice = parseFloat(data[0][1]);
+        if (openPrice > 0) {
+          contract.strikePrice = openPrice;
+          contractCache.set(contract.conditionId, contract);
+          return openPrice;
+        }
+      }
+      break;  // Request succeeded (even if no data), stop retrying
+    } catch (e: any) {
+      // 451 = geo-restriction, cycle to next endpoint
+      klinesEndpointIdx++;
+      if (attempt < KLINES_ENDPOINTS.length - 1) {
+        logger.debug("scanner", `Klines endpoint blocked (${e.message}), trying next...`);
       }
     }
-  } catch {}
+  }
 
   return null;
 }

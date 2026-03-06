@@ -20,6 +20,7 @@ let wsReady = false;
 let pendingSubs: string[] = [];
 let reconnectMs = 1000;
 const MAX_RECONNECT_MS = 30_000;
+let pingInterval: NodeJS.Timeout | null = null;
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
@@ -103,6 +104,14 @@ export function connect(): void {
     reconnectMs = 1000;
     logger.info("polybook", "WS connected");
 
+    // Start PING keepalive every 30s to prevent server-side idle disconnect
+    if (pingInterval) clearInterval(pingInterval);
+    pingInterval = setInterval(() => {
+      if (ws && wsReady) {
+        try { ws.ping(); } catch {}
+      }
+    }, 30_000);
+
     // Re-subscribe all known tokens
     if (subscribedTokens.size > 0) {
       sendSubscribe([...subscribedTokens]);
@@ -160,6 +169,7 @@ export function connect(): void {
 
   ws.on("close", () => {
     wsReady = false;
+    if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
     logger.warn("polybook", `WS disconnected, reconnecting in ${reconnectMs}ms`);
     setTimeout(() => connect(), reconnectMs);
     reconnectMs = Math.min(reconnectMs * 2, MAX_RECONNECT_MS);
@@ -234,6 +244,7 @@ export async function refreshEmptyBooks(): Promise<void> {
 }
 
 export function disconnect(): void {
+  if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
   if (ws) {
     try { ws.terminate(); } catch {}
     ws = null;
