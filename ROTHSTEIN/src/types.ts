@@ -94,11 +94,11 @@ export interface FeatureVector {
 // ─── Scoring ────────────────────────────────────────────────────────────────
 
 export interface ScoreComponents {
-  edgeScore: number;           // 0-40 (+10 from midEdge redistribution)
-  midEdgeScore: number;        // always 0 (disabled — whale conviction metric unavailable in independent mode)
-  momentumScore: number;       // 0-20 (+5 from midEdge redistribution)
+  edgeScore: number;           // 0-30
+  midEdgeScore: number;        // 0-20
+  momentumScore: number;       // 0-15
   timingScore: number;         // 0-10
-  activityScore: number;       // 0-15 (+5 from midEdge redistribution)
+  activityScore: number;       // 0-10
   whaleBonus: number;          // 0-15
   hourBonus: number;           // -5 to +5
 }
