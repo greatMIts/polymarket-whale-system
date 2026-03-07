@@ -22,7 +22,7 @@ export const CONFIG = {
   dataApi: "https://data-api.polymarket.com",
 
   // Whale polling
-  whalePollMs: 5_000,             // poll each wallet every 5s (staggered)
+  whalePollMs: 2_000,             // poll all wallets every 2s (parallel)
   trackedWallets: [
     { address: "0x571c285a83eba5322b5f916ba681669dc368a61f", label: "0x571c" },
     { address: "0xf6963d4cdbb6f26d753bda303e9513132afb1b7d", label: "0xf696" },
@@ -63,7 +63,7 @@ export const CONFIG = {
 
   // Scoring (defaults, can be overridden by runtime config)
   defaultMinTradeScore: 60,
-  minCopyScore: 55,                // min score to execute a whale copy trade
+  minCopyScore: 50,                // min score to execute a whale copy trade (matches $2 sizing tier)
   copyLatencyBudgetMs: 2_000,      // max pipeline latency before abort
 
   // Sizing tiers: score threshold → base USD bet

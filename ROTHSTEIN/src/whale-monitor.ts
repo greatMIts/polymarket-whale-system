@@ -193,8 +193,8 @@ async function pollCycle(): Promise<void> {
       logger.warn("whale-monitor", `Poll #${pollCycleCount}: ${cycleErrors}/${activeWallets.length} wallet polls failed`);
     }
 
-    // Heartbeat log every 60s (~12 cycles at 5s interval)
-    if (pollCycleCount % 12 === 0) {
+    // Heartbeat log every ~60s (30 cycles at 2s interval)
+    if (pollCycleCount % 30 === 0) {
       logger.info("whale-monitor",
         `Heartbeat: ${pollCycleCount} cycles | ${totalSignalsFound} signals found | ${pollErrors} errors | ${activeWallets.length} wallets | dedup cache: ${seenTrades.size}`
       );
