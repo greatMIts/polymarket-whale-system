@@ -239,7 +239,8 @@ async function pollWallet(address: string, label: string): Promise<WhaleSignal[]
     // Diagnostic: log trade timestamps vs cursor on first cycle
     if (pollCycleCount <= 1 && trades.length > 0) {
       const newest = trades[0];
-      const newestTs = new Date(newest.timestamp || newest.ts).getTime();
+      let newestTs = new Date(newest.timestamp || newest.ts).getTime();
+      if (newestTs > 0 && newestTs < 1e12) newestTs *= 1000;
       const age = Math.round((Date.now() - newestTs) / 1000);
       logger.info("whale-monitor",
         `Diag ${label}: ${trades.length} trades | newest=${age}s ago | cursor=${Math.round((Date.now() - walletLastSeen)/1000)}s ago | cutoff=${Math.round((Date.now() - cutoff)/1000)}s`
@@ -247,7 +248,9 @@ async function pollWallet(address: string, label: string): Promise<WhaleSignal[]
     }
 
     for (const t of trades) {
-      const tradeTs = new Date(t.timestamp || t.ts).getTime();
+      let tradeTs = new Date(t.timestamp || t.ts).getTime();
+      // Polymarket Data API returns Unix seconds — detect and convert to ms
+      if (tradeTs > 0 && tradeTs < 1e12) tradeTs *= 1000;
       if (isNaN(tradeTs) || tradeTs <= walletLastSeen || tradeTs < cutoff) continue;
 
       const conditionId = t.conditionId || t.condition_id;
@@ -285,7 +288,11 @@ async function pollWallet(address: string, label: string): Promise<WhaleSignal[]
     // Update wallet cursor to newest trade
     if (trades.length > 0) {
       const newestTs = Math.max(
-        ...trades.map((t: any) => new Date(t.timestamp || t.ts).getTime()).filter((n: number) => !isNaN(n))
+        ...trades.map((t: any) => {
+          let ts = new Date(t.timestamp || t.ts).getTime();
+          if (ts > 0 && ts < 1e12) ts *= 1000;
+          return ts;
+        }).filter((n: number) => !isNaN(n))
       );
       if (newestTs > walletLastSeen) {
         walletCursors.set(address, newestTs);

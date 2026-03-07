@@ -109,7 +109,9 @@ async function pollWallet(address: string, label: string): Promise<void> {
     const walletLastSeen = lastSeenTs.get(address) || cutoff;
 
     for (const t of trades) {
-      const tradeTs = new Date(t.timestamp || t.ts).getTime();
+      let tradeTs = new Date(t.timestamp || t.ts).getTime();
+      // Polymarket Data API returns Unix seconds — detect and convert to ms
+      if (tradeTs > 0 && tradeTs < 1e12) tradeTs *= 1000;
       if (isNaN(tradeTs) || tradeTs <= walletLastSeen || tradeTs < cutoff) continue;
 
       const conditionId = t.conditionId || t.condition_id;
@@ -149,7 +151,11 @@ async function pollWallet(address: string, label: string): Promise<void> {
 
     // Update last seen timestamp
     if (trades.length > 0) {
-      const newestTs = Math.max(...trades.map((t: any) => new Date(t.timestamp || t.ts).getTime()).filter((n: number) => !isNaN(n)));
+      const newestTs = Math.max(...trades.map((t: any) => {
+        let ts = new Date(t.timestamp || t.ts).getTime();
+        if (ts > 0 && ts < 1e12) ts *= 1000;
+        return ts;
+      }).filter((n: number) => !isNaN(n)));
       if (newestTs > walletLastSeen) {
         lastSeenTs.set(address, newestTs);
       }
