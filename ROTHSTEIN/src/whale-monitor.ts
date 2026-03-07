@@ -211,6 +211,15 @@ async function pollWallet(address: string, label: string): Promise<WhaleSignal[]
     const url = `${CONFIG.dataApi}/activity?user=${address}&limit=20&type=TRADE&sortBy=TIMESTAMP&sortDirection=DESC`;
     const res = await axiosClient.get(url);
 
+    // Diagnostic: log first poll response structure for each wallet
+    if (pollCycleCount <= 1) {
+      const dataType = Array.isArray(res.data) ? `array[${res.data.length}]` : typeof res.data;
+      const sample = Array.isArray(res.data) && res.data.length > 0
+        ? JSON.stringify(Object.keys(res.data[0]))
+        : (res.data && typeof res.data === "object" ? JSON.stringify(Object.keys(res.data)) : "N/A");
+      logger.info("whale-monitor", `Diag ${label}: type=${dataType} keys=${sample}`);
+    }
+
     if (!res.data || !Array.isArray(res.data)) return [];
 
     lastPollTime = Date.now();
@@ -226,6 +235,16 @@ async function pollWallet(address: string, label: string): Promise<WhaleSignal[]
     const cutoff = Date.now() - CONFIG.whaleSignalExpireMs;
     const walletLastSeen = walletCursors.get(address) || cutoff;
     const newSignals: WhaleSignal[] = [];
+
+    // Diagnostic: log trade timestamps vs cursor on first cycle
+    if (pollCycleCount <= 1 && trades.length > 0) {
+      const newest = trades[0];
+      const newestTs = new Date(newest.timestamp || newest.ts).getTime();
+      const age = Math.round((Date.now() - newestTs) / 1000);
+      logger.info("whale-monitor",
+        `Diag ${label}: ${trades.length} trades | newest=${age}s ago | cursor=${Math.round((Date.now() - walletLastSeen)/1000)}s ago | cutoff=${Math.round((Date.now() - cutoff)/1000)}s`
+      );
+    }
 
     for (const t of trades) {
       const tradeTs = new Date(t.timestamp || t.ts).getTime();
