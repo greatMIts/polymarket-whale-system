@@ -13,6 +13,7 @@ import * as polyBook from "./polymarket-book";
 import * as pricing from "./pricing";
 import * as binance from "./binance-feed";
 import { backfillResolution } from "./decisions-log";
+import axios from "axios";
 
 // ─── State ──────────────────────────────────────────────────────────────────
 
@@ -126,11 +127,28 @@ export async function checkResolutions(): Promise<void> {
       }
     }
 
-    // Method 3: Well past expiry (>10 min), force check
-    if (now - pos.openedAt > 900_000) {  // 15 minutes, generous buffer
-      // Assume loss if we can't confirm win
-      logger.warn("positions", `Position ${id} aged out (>15 min), marking expired`);
-      resolvePosition(id, "EXPIRED", false, 0);
+    // Method 3: Contract expired but book is dead — query CLOB API directly
+    // After expiry, market makers pull orders so book.mid → 0. We can't rely
+    // on the book for resolution. Instead, query the CLOB API for the market's
+    // resolved token prices.
+    if (contractExpired && (!book || book.mid === 0)) {
+      const apiResult = await fetchResolutionFromApi(contract.conditionId, contract.side);
+      if (apiResult !== null) {
+        const won = apiResult;
+        resolvePosition(id, won ? "RESOLVED_WIN" : "RESOLVED_LOSS", won, won ? 1.0 : 0.0);
+        continue;
+      }
+    }
+
+    // Method 4: Absolute timeout (30 min) — last resort, query API one more time
+    if (now - pos.openedAt > 1_800_000) {
+      const apiResult = await fetchResolutionFromApi(contract.conditionId, contract.side);
+      if (apiResult !== null) {
+        resolvePosition(id, apiResult ? "RESOLVED_WIN" : "RESOLVED_LOSS", apiResult, apiResult ? 1.0 : 0.0);
+      } else {
+        logger.warn("positions", `Position ${id} aged out (>30 min), API inconclusive, marking expired`);
+        resolvePosition(id, "EXPIRED", false, 0);
+      }
       continue;
     }
   }
@@ -302,4 +320,66 @@ export function loadFromDisk(): void {
   }
 
   logger.info("positions", `Crash recovery: ${openPositions.size} open, ${closedPositions.length} closed`);
+}
+
+// ─── CLOB API Resolution Query ──────────────────────────────────────────────
+// After contract expiry, market makers pull orders and the book goes dead.
+// This queries the CLOB API directly for the market's resolution.
+// Returns: true = our side won, false = our side lost, null = not yet resolved.
+
+const _apiResolutionCache = new Map<string, { ts: number; result: boolean | null }>();
+
+async function fetchResolutionFromApi(conditionId: string, side: string): Promise<boolean | null> {
+  // Rate-limit: don't re-query same condition within 30s
+  const cached = _apiResolutionCache.get(conditionId);
+  if (cached && Date.now() - cached.ts < 30_000) return cached.result;
+
+  try {
+    const { data } = await axios.get(`${CONFIG.clobApi}/markets/${conditionId}`, {
+      timeout: 5000,
+      headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" },
+    });
+
+    // CLOB returns array of tokens with outcome/price/winner fields
+    // Each token: { token_id, outcome, price, winner }
+    const tokens = Array.isArray(data) ? data : [data];
+
+    // Find our side's token
+    const ourToken = tokens.find((t: any) =>
+      t.outcome?.toLowerCase() === side.toLowerCase()
+    );
+
+    if (!ourToken) {
+      _apiResolutionCache.set(conditionId, { ts: Date.now(), result: null });
+      return null;
+    }
+
+    // Check if market has resolved: winner field is set, or price is 0 or 1
+    if (ourToken.winner === true) {
+      _apiResolutionCache.set(conditionId, { ts: Date.now(), result: true });
+      return true;
+    }
+    if (ourToken.winner === false) {
+      _apiResolutionCache.set(conditionId, { ts: Date.now(), result: false });
+      return false;
+    }
+
+    // Fallback: check if price is decisively resolved
+    const price = parseFloat(ourToken.price || "0.5");
+    if (price >= 0.95) {
+      _apiResolutionCache.set(conditionId, { ts: Date.now(), result: true });
+      return true;
+    }
+    if (price <= 0.05) {
+      _apiResolutionCache.set(conditionId, { ts: Date.now(), result: false });
+      return false;
+    }
+
+    // Not yet resolved
+    _apiResolutionCache.set(conditionId, { ts: Date.now(), result: null });
+    return null;
+  } catch (e: any) {
+    logger.debug("positions", `CLOB API resolution check failed for ${conditionId}: ${e.message}`);
+    return null;
+  }
 }

@@ -119,20 +119,14 @@ async function runScanCycle(): Promise<void> {
         const minScore = runtime.minTradeScore;
 
         if (scoring.totalScore >= minScore && canTrade) {
-          // Mean-reversion flip: model is anti-predictive at 5-min scale,
-          // bet the opposite side (3.6% WR → 96.4% WR from 138 trades)
-          const tradeSide: Side = side === "Up" ? "Down" : "Up";
-          const tradeTokenId = pickTokenId(contract, tradeSide);
-          if (!tradeTokenId) continue;
-
+          // TRADE — execute!
           const execution = await trader.executeTrade(
-            contract, tradeSide, tradeTokenId, features, scoring
+            contract, side, tokenId, features, scoring
           );
 
           if (execution) {
             traded++;
-            decisionsLog.logDecision(contract, tradeSide, features, scoring, "TRADE", execution.sizeUsd);
-            break; // one bet per contract — don't also flip the other side
+            decisionsLog.logDecision(contract, side, features, scoring, "TRADE", execution.sizeUsd);
           } else {
             // Trade blocked by risk/position limits — still log
             decisionsLog.logDecision(contract, side, features, scoring, "LOG_ONLY", scoring.suggestedSize);

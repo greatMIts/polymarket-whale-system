@@ -164,6 +164,8 @@ function loadRuntimeConfig(): void {
       const raw = fs.readFileSync(RUNTIME_CONFIG_FILE, "utf8");
       const parsed = JSON.parse(raw);
       _runtime = { ...DEFAULT_RUNTIME, ...parsed };
+      // Clamp critical values to prevent bad saved configs
+      if (_runtime.minTradeScore < 30) _runtime.minTradeScore = DEFAULT_RUNTIME.minTradeScore;
       console.log("[config] Loaded runtime config:", _runtime);
     } else {
       _runtime = { ...DEFAULT_RUNTIME };

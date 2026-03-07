@@ -220,7 +220,7 @@ export function start(): void {
       if (b.deadHours !== undefined) {
         updates.deadHours = b.deadHours.map(Number).filter((n: number) => !isNaN(n) && n >= 0 && n < 24);
       }
-      if (b.minTradeScore !== undefined) updates.minTradeScore = Math.max(0, Math.min(100, Number(b.minTradeScore)));
+      if (b.minTradeScore !== undefined) updates.minTradeScore = Math.max(30, Math.min(100, Number(b.minTradeScore)));
       if (b.sizingMultiplier !== undefined) updates.sizingMultiplier = Math.max(0, Math.min(5, Number(b.sizingMultiplier)));
       if (b.maxConcurrentPositions !== undefined) updates.maxConcurrentPositions = Math.max(1, Math.min(20, Number(b.maxConcurrentPositions)));
       if (b.paused !== undefined) updates.paused = Boolean(b.paused);
