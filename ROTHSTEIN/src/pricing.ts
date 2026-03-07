@@ -65,11 +65,14 @@ export function computeEdgeVsSpot(fairValue: number, marketPrice: number): numbe
 }
 
 // ─── Mid Edge ───────────────────────────────────────────────────────────────
-// How far below (or above) the book midpoint our entry is.
-// Negative = buying below mid (good entry). Positive = above mid.
+// Matches whale_trades convention: polyMid - entryPrice.
+// Negative = entry above mid (always the case when buying at ask).
+// In whale data, large negative values meant whale conviction (market impact).
+// In independent mode this is always ~-spread/2 (~-0.005). Logged for
+// observability but NOT scored — those 20 pts redistributed to edge/momentum/activity.
 
 export function computeMidEdge(polyMid: number, entryPrice: number): number {
-  return entryPrice - polyMid;
+  return polyMid - entryPrice;
 }
 
 // ─── Realized Volatility ────────────────────────────────────────────────────

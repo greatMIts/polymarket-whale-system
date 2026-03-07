@@ -6,32 +6,36 @@
 import { FeatureVector, ScoreComponents, ScoringResult, ScoreRecommendation } from "./types";
 import { CONFIG, getRuntime } from "./config";
 
-// ─── Score Component: EdgeVsSpot (0-30 points) ─────────────────────────────
+// ─── Score Component: EdgeVsSpot (0-40 points) ─────────────────────────────
+// +10 pts absorbed from midEdge (which is disabled in independent mode)
 
 function scoreEdge(edgeVsSpot: number): number {
-  if (edgeVsSpot >= 0.15 && edgeVsSpot <= 0.25) return 30;  // sweet spot
-  if (edgeVsSpot >= 0.25 && edgeVsSpot <= 0.30) return 25;
-  if (edgeVsSpot >= 0.10 && edgeVsSpot < 0.15) return 20;
-  if (edgeVsSpot > 0.30) return 15;                          // overshoot risk
-  if (edgeVsSpot >= 0.05 && edgeVsSpot < 0.10) return 10;
+  if (edgeVsSpot >= 0.15 && edgeVsSpot <= 0.25) return 40;  // sweet spot
+  if (edgeVsSpot >= 0.25 && edgeVsSpot <= 0.30) return 33;
+  if (edgeVsSpot >= 0.10 && edgeVsSpot < 0.15) return 27;
+  if (edgeVsSpot > 0.30) return 20;                          // overshoot risk
+  if (edgeVsSpot >= 0.05 && edgeVsSpot < 0.10) return 13;
   return 0;
 }
 
-// ─── Score Component: MidEdge (0-20 points) ─────────────────────────────────
+// ─── Score Component: MidEdge (DISABLED — 0 points) ─────────────────────────
+// In whale data, midEdge measured market impact (how far above mid the whale's
+// aggressive buy pushed the fill price). Large negative = high conviction = 83.76% WR.
+// In independent mode, midEdge = -(spread/2) ≈ -0.005, always landing in the
+// "neutral" 5-point tier. The 15/20 point tiers require market impact of 0.10-0.20+
+// which is impossible without large orders eating through the book.
+// 20 points redistributed: edge +10, momentum +5, activity +5.
 
-function scoreMidEdge(midEdge: number): number {
-  if (midEdge < -0.20) return 20;     // extreme bargain entry
-  if (midEdge < -0.10) return 15;     // good entry
-  if (midEdge < 0) return 10;         // acceptable
-  if (midEdge < 0.05) return 5;       // neutral
-  return 0;                            // above mid, no advantage
+function scoreMidEdge(_midEdge: number): number {
+  return 0;
 }
 
-// ─── Score Component: Momentum Alignment (0-15 points) ──────────────────────
+// ─── Score Component: Momentum Alignment (0-20 points) ──────────────────────
+// +5 pts absorbed from midEdge (which is disabled in independent mode)
 
 function scoreMomentum(momentumAligned: boolean, delta30s: number): number {
-  if (momentumAligned) return 15;      // +9.5% WR lift from data
-  if (Math.abs(delta30s) < 0.005) return 5;  // flat, neutral
+  if (momentumAligned) return 20;      // +9.5% WR lift from data
+  if (Math.abs(delta30s) < 0.005) return 7;  // flat, neutral
   return 0;                            // opposing direction
 }
 
@@ -47,13 +51,14 @@ function scoreTiming(secsRemaining: number): number {
   return 0;
 }
 
-// ─── Score Component: Market Activity / Volatility (0-10 points) ────────────
+// ─── Score Component: Market Activity / Volatility (0-15 points) ────────────
+// +5 pts absorbed from midEdge (which is disabled in independent mode)
 
 function scoreActivity(delta30s: number): number {
   const abs = Math.abs(delta30s);
-  if (abs > 0.10) return 10;    // active market, ~54% WR, highest PnL
-  if (abs > 0.05) return 7;     // moderate activity
-  if (abs > 0.02) return 3;     // sluggish
+  if (abs > 0.10) return 15;    // active market, ~54% WR, highest PnL
+  if (abs > 0.05) return 10;    // moderate activity
+  if (abs > 0.02) return 5;     // sluggish
   return 0;                      // dead market
 }
 
