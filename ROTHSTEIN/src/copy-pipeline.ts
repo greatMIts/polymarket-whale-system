@@ -100,6 +100,9 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
     // Same conditionId:side can only execute once per 5 min window.
     // This stops overlapping poll responses from triggering 3+ copy trades
     // from a single whale trade, which also prevents circuit breaker poisoning.
+    // Key is set EAGERLY here (before scoring/execution) so concurrent handlers
+    // see it immediately — prevents race condition where two handlers both
+    // pass the check before either sets the key.
     const execKey = `${signal.conditionId}:${signal.side}`;
     const lastExec = executedKeys.get(execKey);
     if (lastExec && (Date.now() - lastExec) < EXECUTED_KEY_TTL) {
@@ -108,6 +111,7 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
       );
       return;
     }
+    executedKeys.set(execKey, Date.now());  // eager lock
 
     // ─── Step 3: Build features (~8ms, sync) ──────────────────────────────
 
@@ -183,10 +187,7 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
       // Without this, trades are placed but never tracked/resolved/persisted
       positions.openPosition(execution);
 
-      // Mark this conditionId:side as executed for dedup
-      executedKeys.set(execKey, Date.now());
-
-      // Cleanup old dedup keys
+      // Cleanup old dedup keys periodically
       if (executedKeys.size > 100) {
         const cutoff = Date.now() - EXECUTED_KEY_TTL;
         for (const [k, ts] of executedKeys) {
