@@ -582,6 +582,45 @@
     </div>
   </div>
 
+  <!-- STRATEGY OVERVIEW -->
+  <div class="card">
+    <div class="card-title">Strategy <span id="stratBadge" style="font-size:9px;padding:2px 6px;border-radius:3px;background:rgba(0,230,118,0.15);color:var(--green);font-weight:400;letter-spacing:0">ACTIVE</span></div>
+    <div class="card-body" style="font-size:12px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <span style="color:var(--gold);font-weight:700;font-size:14px;letter-spacing:1px;">WHALE COPIER v5</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;">
+        <div style="color:var(--dim)">Wallets Tracked</div>
+        <div id="stratWallets" style="text-align:right">—</div>
+        <div style="color:var(--dim)">Poll Rate</div>
+        <div id="stratPollRate" style="text-align:right">—</div>
+        <div style="color:var(--dim)">Min Copy Score</div>
+        <div id="stratMinScore" style="text-align:right;color:var(--gold)">—</div>
+        <div style="color:var(--dim)">Bet Size</div>
+        <div id="stratBetSize" style="text-align:right">—</div>
+        <div style="color:var(--dim)">Max Positions</div>
+        <div id="stratMaxPos" style="text-align:right">—</div>
+        <div style="color:var(--dim)">Max Risk ($)</div>
+        <div id="stratMaxRisk" style="text-align:right">—</div>
+        <div style="color:var(--dim)">Active Signals</div>
+        <div id="stratSignals" style="text-align:right;color:var(--cyan)">—</div>
+        <div style="color:var(--dim)">Last Signal</div>
+        <div id="stratLastSignal" style="text-align:right">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WHALE FEED -->
+  <div class="card">
+    <div class="card-title">Whale Feed <span id="whaleCount" style="color:var(--dim);font-weight:400">0</span></div>
+    <div class="card-body scroll-box" style="max-height:200px;">
+      <table class="tbl" id="whaleTable">
+        <thead><tr><th>Time</th><th>Wallet</th><th>T</th><th>Side</th><th>Size</th><th>Price</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- SUBSYSTEM HEALTH -->
   <div class="card">
     <div class="card-title">System Health</div>
@@ -589,8 +628,8 @@
       <div style="display:flex;flex-direction:column;gap:10px;">
         <div class="health-item"><span class="health-dot" id="healthBinance"></span> Binance WS <span id="healthBinanceAge" style="color:var(--dim);font-size:10px;margin-left:auto"></span></div>
         <div class="health-item"><span class="health-dot" id="healthPoly"></span> Polymarket WS <span id="healthPolyAge" style="color:var(--dim);font-size:10px;margin-left:auto"></span></div>
-        <div class="health-item"><span class="health-dot" id="healthWhale"></span> Whale Poller <span id="healthWhaleAge" style="color:var(--dim);font-size:10px;margin-left:auto"></span></div>
-        <div class="health-item"><span class="health-dot" id="healthScanner"></span> Scanner <span id="healthScannerAge" style="color:var(--dim);font-size:10px;margin-left:auto"></span></div>
+        <div class="health-item"><span class="health-dot" id="healthWhale"></span> Whale Monitor <span id="healthWhaleAge" style="color:var(--dim);font-size:10px;margin-left:auto"></span></div>
+        <div class="health-item"><span class="health-dot" id="healthScanner"></span> Pipeline <span id="healthScannerAge" style="color:var(--dim);font-size:10px;margin-left:auto"></span></div>
       </div>
     </div>
   </div>
@@ -897,6 +936,37 @@ function updateDashboard(s) {
   setHealthWhale('healthWhale', s.subsystemHealth?.whalePoller, 'healthWhaleAge');
   setHealthScanner('healthScanner', s.subsystemHealth?.scanner, 'healthScannerAge');
 
+  // Strategy Overview
+  const cfg = s.runtimeConfig || {};
+  const wp = s.subsystemHealth?.whalePoller || {};
+  document.getElementById('stratWallets').textContent = wp.walletsPolled !== undefined ? (wp.walletsPolled + ' active') : '—';
+  document.getElementById('stratPollRate').textContent = '5s';
+  document.getElementById('stratMinScore').textContent = cfg.minTradeScore || '55';
+  document.getElementById('stratBetSize').textContent = cfg.betSizeUsdc ? ('$' + cfg.betSizeUsdc) : '—';
+  document.getElementById('stratMaxPos').textContent = cfg.maxConcurrentPositions || '—';
+  document.getElementById('stratMaxRisk').textContent = cfg.maxTotalAtRisk ? ('$' + cfg.maxTotalAtRisk) : '—';
+
+  const whaleAct = s.whaleActivity || [];
+  document.getElementById('stratSignals').textContent = whaleAct.length;
+  if (whaleAct.length > 0) {
+    document.getElementById('stratLastSignal').textContent = timeAgo(whaleAct[0].ts);
+  } else {
+    document.getElementById('stratLastSignal').textContent = 'none';
+  }
+  const stratBadge = document.getElementById('stratBadge');
+  if (wp.active) {
+    stratBadge.textContent = 'ACTIVE';
+    stratBadge.style.background = 'rgba(0,230,118,0.15)';
+    stratBadge.style.color = 'var(--green)';
+  } else {
+    stratBadge.textContent = 'INACTIVE';
+    stratBadge.style.background = 'rgba(255,68,68,0.15)';
+    stratBadge.style.color = 'var(--red)';
+  }
+
+  // Whale Feed
+  renderWhaleFeed(whaleAct);
+
   // Contracts
   renderContracts(s.activeContracts || []);
 
@@ -1000,6 +1070,20 @@ function fmtContract(title, endTs, secsRem, ts) {
 }
 
 // ─── Renderers ──────────────────────────────────────────────────────────────
+function renderWhaleFeed(signals) {
+  document.getElementById('whaleCount').textContent = signals.length;
+  const tbody = document.querySelector('#whaleTable tbody');
+  tbody.innerHTML = '';
+  const recent = signals.slice(0, 20);
+  for (const s of recent) {
+    const tr = document.createElement('tr');
+    const sideColor = s.side === 'Up' ? 'var(--green)' : 'var(--red)';
+    const tierColor = s.tier === 1 ? 'var(--gold)' : s.tier === 2 ? 'var(--blue)' : 'var(--dim)';
+    tr.innerHTML = `<td>${fmtTime(s.ts)}</td><td style="color:var(--cyan)">${s.walletLabel || s.wallet?.slice(0,6) || '—'}</td><td style="color:${tierColor};font-weight:700">T${s.tier}</td><td style="color:${sideColor};font-weight:700">${s.side}</td><td>$${(s.usdcSize||0).toFixed(0)}</td><td>${(s.price||0).toFixed(3)}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
 function renderContracts(contracts) {
   document.getElementById('contractCount').textContent = contracts.length;
   const tbody = document.querySelector('#contractsTable tbody');
