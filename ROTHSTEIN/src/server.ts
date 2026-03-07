@@ -13,10 +13,10 @@ import { logger } from "./logger";
 import * as binance from "./binance-feed";
 import * as polyBook from "./polymarket-book";
 import * as contractScanner from "./contract-scanner";
-import * as whales from "./whale-listener";
+import * as whales from "./whale-monitor";
 import * as positions from "./positions";
 import * as risk from "./risk";
-import * as scanner from "./scanner";
+import * as copyPipeline from "./copy-pipeline";
 import { getRecentDecisions } from "./decisions-log";
 import * as fs from "fs";
 import { readJsonl } from "./persistence";
@@ -57,15 +57,15 @@ function buildPayload(): DashboardPayload {
       walletsPolled: whales.getWalletsPolled(),
     },
     scanner: {
-      running: scanner.isRunning(),
-      lastScan: scanner.getLastScanTime(),
+      running: whales.isActive(),      // pipeline is active when whale monitor is active
+      lastScan: whales.getLastPollTime(),
     },
   };
 
   return {
     mode: CONFIG.mode,
     uptime: Date.now() - logger.getBootTime(),
-    lastScanTime: scanner.getLastScanTime(),
+    lastScanTime: whales.getLastPollTime(),
     lastTradeTime,
 
     btcPrice: binance.getPrice("BTC") || 0,
@@ -281,7 +281,7 @@ export function start(): void {
       const decisions = entries.filter((e: any) => e.ts && e.conditionId && e.score !== undefined && !e.type);
       if (decisions.length === 0) { res.status(404).json({ error: "No decisions to export" }); return; }
 
-      const headers = ["ts","time","conditionId","title","asset","side","score","action","sizeUsd","entryPrice","secsRemaining","edgeVsSpot","midEdge","momentumAligned","spotPrice","polyMid","bookSpread","delta30s","delta5m","vol1h","fairValue","concurrentWhales","bestWalletTier","whaleMaxSize","whaleAgreement","resolution","won","pnl"];
+      const headers = ["ts","time","conditionId","title","asset","side","score","action","sizeUsd","entryPrice","secsRemaining","edgeVsSpot","midEdge","momentumAligned","spotPrice","polyMid","bookSpread","delta30s","delta5m","vol1h","fairValue","concurrentWhales","bestWalletTier","whaleMaxSize","whaleAgreement","triggeredByWallet","whaleWalletLabel","whaleTier","whaleUsdcSize","whaleEntryPrice","pipelineLatencyMs","resolution","won","pnl"];
       const csvLines = [headers.join(",")];
       for (const d of decisions) {
         const f = d.features || {};
@@ -293,6 +293,9 @@ export function start(): void {
           f.bookSpread?.toFixed(4)||'', f.delta30s?.toFixed(6)||'', f.delta5m?.toFixed(6)||'',
           f.vol1h?.toFixed(4)||'', f.fairValue?.toFixed(6)||'', f.concurrentWhales||0,
           f.bestWalletTier||0, f.whaleMaxSize?.toFixed(2)||0, f.whaleAgreement||false,
+          d.triggeredByWallet||'', d.whaleWalletLabel||'', d.whaleTier===undefined?'':d.whaleTier,
+          d.whaleUsdcSize===undefined?'':d.whaleUsdcSize?.toFixed(2), d.whaleEntryPrice===undefined?'':d.whaleEntryPrice?.toFixed(6),
+          d.pipelineLatencyMs===undefined?'':d.pipelineLatencyMs,
           d.resolution||'', d.won===undefined?'':d.won, d.pnl===undefined?'':d.pnl?.toFixed(4)
         ];
         csvLines.push(row.join(","));
@@ -324,12 +327,13 @@ export function start(): void {
       const allPositions = [...posMap.values()];
       if (allPositions.length === 0) { res.status(404).json({ error: "No trades to export" }); return; }
 
-      const headers = ["ts","time","id","mode","asset","side","title","entryPrice","sizeUsd","shares","score","edgeVsSpot","midEdge","momentumAligned","secsRemaining","spotPrice","polyMid","bookSpread","delta30s","delta5m","vol1h","fairValue","concurrentWhales","bestWalletTier","whaleMaxSize","strikePrice","conditionId","status","resolution","won","pnl","exitPrice","closedAt"];
+      const headers = ["ts","time","id","mode","asset","side","title","entryPrice","sizeUsd","shares","score","edgeVsSpot","midEdge","momentumAligned","secsRemaining","spotPrice","polyMid","bookSpread","delta30s","delta5m","vol1h","fairValue","concurrentWhales","bestWalletTier","whaleMaxSize","strikePrice","conditionId","triggeredByWallet","whaleWalletLabel","whaleTier","whaleUsdcSize","whaleEntryPrice","pipelineLatencyMs","whaleToExecutionMs","slippageVsWhale","bookSpreadAtEntry","status","resolution","won","pnl","exitPrice","closedAt"];
       const csvLines = [headers.join(",")];
       for (const p of allPositions) {
         const t = p.trade || {};
         const f = t.features || {};
         const r = p.resolvedData || {};
+        const wc = t.whaleCopy || {};
         const row = [
           t.ts||p.openedAt, new Date(t.ts||p.openedAt).toISOString(), t.id||p.id, t.mode||'PAPER',
           t.asset||'', t.side||'', `"${(t.title||'').replace(/"/g,'""')}"`,
@@ -339,7 +343,15 @@ export function start(): void {
           f.bookSpread?.toFixed(4)||'', f.delta30s?.toFixed(6)||'', f.delta5m?.toFixed(6)||'',
           f.vol1h?.toFixed(4)||'', f.fairValue?.toFixed(6)||'', f.concurrentWhales||0,
           f.bestWalletTier||0, f.whaleMaxSize?.toFixed(2)||0, t.strikePrice?.toFixed(2)||'',
-          t.conditionId||'', r.status||p.status||'OPEN', r.won===undefined?'':(r.won?'WIN':'LOSS'),
+          t.conditionId||'',
+          wc.triggeredByWallet||'', wc.whaleWalletLabel||'', wc.whaleTier===undefined?'':wc.whaleTier,
+          wc.whaleUsdcSize===undefined?'':wc.whaleUsdcSize?.toFixed(2),
+          wc.whaleEntryPrice===undefined?'':wc.whaleEntryPrice?.toFixed(6),
+          wc.pipelineLatencyMs===undefined?'':wc.pipelineLatencyMs,
+          wc.whaleToExecutionMs===undefined?'':wc.whaleToExecutionMs,
+          wc.slippageVsWhale===undefined?'':wc.slippageVsWhale?.toFixed(6),
+          wc.bookSpreadAtEntry===undefined?'':wc.bookSpreadAtEntry?.toFixed(4),
+          r.status||p.status||'OPEN', r.won===undefined?'':(r.won?'WIN':'LOSS'),
           r.won===undefined?'':r.won, r.pnl===undefined?'':r.pnl?.toFixed(4),
           r.exitPrice?.toFixed(6)||'', r.ts ? new Date(r.ts).toISOString() : ''
         ];

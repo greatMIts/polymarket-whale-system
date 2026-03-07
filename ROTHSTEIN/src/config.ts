@@ -40,7 +40,7 @@ export const CONFIG = {
 
   // Scanning intervals
   scanIntervalMs: 1_000,          // evaluate all contracts every 1s
-  resolutionCheckMs: 30_000,      // check if open positions resolved
+  resolutionCheckMs: 5_000,       // check if open positions resolved (was 30s, reduced for faster dashboard updates)
   contractScanMs: 30_000,         // scan Gamma for new contracts
   heartbeatCheckMs: 10_000,       // subsystem health check
   bookRefreshMs: 15_000,          // refresh empty order books via REST
@@ -63,6 +63,8 @@ export const CONFIG = {
 
   // Scoring (defaults, can be overridden by runtime config)
   defaultMinTradeScore: 60,
+  minCopyScore: 55,                // min score to execute a whale copy trade
+  copyLatencyBudgetMs: 2_000,      // max pipeline latency before abort
 
   // Sizing tiers: score threshold → base USD bet
   sizingTiers: [
@@ -89,7 +91,7 @@ export const CONFIG = {
   dataDir: process.env.DATA_DIR || "./data",
   decisionsFile: "decisions.jsonl",
   positionsFile: "positions.jsonl",
-  rotationMaxLines: 60_000,
+  rotationMaxLines: 50_000,       // reduced from 60k — wider rows with whale copy fields, keep files <30MB
   maxArchives: 20,
 
   // CLOB credentials (LIVE mode only)

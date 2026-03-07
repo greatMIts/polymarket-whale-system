@@ -10,7 +10,7 @@ import { logger } from "./logger";
 import * as binance from "./binance-feed";
 import * as polyBook from "./polymarket-book";
 import * as pricing from "./pricing";
-import * as whales from "./whale-listener";
+import * as whales from "./whale-monitor";
 
 // ─── Diagnostic Counters (reset every 60s, logged as summary) ─────────────
 

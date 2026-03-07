@@ -130,6 +130,7 @@ export interface TradeExecution {
   orderId?: string;
   endTs: number;            // contract expiry timestamp — MUST be stored for position timing
   strikePrice: number;      // Binance price at contract window start — needed for conditional TP
+  whaleCopy?: WhaleCopyMeta;  // Whale copy metadata — present for all copy trades
 }
 
 export interface Position {
@@ -155,6 +156,26 @@ export interface WhaleSignal {
   usdcSize: number;
   conditionId: string;
   tier: number;                // 1, 2, or 3
+  txHash?: string;             // Polymarket transaction hash for dedup
+  detectedAt?: number;         // Timestamp when we detected this signal
+}
+
+// ─── Whale Copy Metadata ───────────────────────────────────────────────────
+// Attached to every trade execution and decision log entry for copy-trade analysis.
+
+export interface WhaleCopyMeta {
+  triggeredByWallet: string;       // Wallet address that triggered the copy (e.g. "0x571c...")
+  whaleWalletLabel: string;        // Human-readable label (e.g. "0x571c")
+  whaleTier: number;               // Wallet tier (1, 2, or 3)
+  whaleUsdcSize: number;           // How much the whale bet (USDC)
+  whaleEntryPrice: number;         // Price the whale entered at
+  whaleTradeTs: number;            // Timestamp of whale's original trade
+  whaleDetectedAt: number;         // When we detected the whale trade
+  pipelineLatencyMs: number;       // Time from detection to our execution (ms)
+  whaleToExecutionMs: number;      // Time from whale trade to our execution (ms)
+  slippageVsWhale: number;         // Our entry price - whale's entry price (positive = worse)
+  bookSpreadAtEntry: number;       // Order book spread at the moment we entered
+  concurrentWhaleSignals: number;  // How many whales traded same contract within 5s
 }
 
 // ─── Dashboard ──────────────────────────────────────────────────────────────
@@ -225,6 +246,13 @@ export interface DecisionLogEntry {
   sizeUsd: number;
   entryPrice: number;
   secsRemaining: number;
+  // Whale copy fields (present when triggered by whale trade):
+  triggeredByWallet?: string;     // Which wallet triggered this decision
+  whaleWalletLabel?: string;      // Human-readable wallet label
+  whaleTier?: number;             // Wallet tier (1/2/3)
+  whaleUsdcSize?: number;         // How much the whale bet
+  whaleEntryPrice?: number;       // What price the whale entered at
+  pipelineLatencyMs?: number;     // Time from detection to decision (ms)
   // Filled after resolution:
   resolution?: string;
   won?: boolean;

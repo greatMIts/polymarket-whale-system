@@ -9,9 +9,10 @@ import { ensureDataDir, initLineCounters } from "./persistence";
 import * as binance from "./binance-feed";
 import * as polyBook from "./polymarket-book";
 import * as contractScanner from "./contract-scanner";
-import * as whales from "./whale-listener";
+import * as whaleMonitor from "./whale-monitor";
 import * as positions from "./positions";
-import * as scanner from "./scanner";
+import * as copyPipeline from "./copy-pipeline";
+import * as copyExecutor from "./copy-executor";
 import * as server from "./server";
 import { loadDecisionsFromDisk } from "./decisions-log";
 
@@ -55,9 +56,9 @@ async function boot(): Promise<void> {
   logger.info("boot", "Step 7/12: Connecting to Polymarket book...");
   polyBook.connect();
 
-  // Step 8: Start whale poller (direct Polymarket API polling)
-  logger.info("boot", "Step 8/12: Starting whale poller...");
-  whales.start();
+  // Step 8: Start whale monitor (parallel Polymarket API polling + EventEmitter)
+  logger.info("boot", "Step 8/12: Starting whale monitor...");
+  whaleMonitor.start();
 
   // Step 9: Initial contract scan
   logger.info("boot", "Step 9/12: Scanning for contracts...");
@@ -75,9 +76,10 @@ async function boot(): Promise<void> {
   logger.info("boot", "Step 12/12: Starting server...");
   server.start();
 
-  // Step 13: Start scan loop
-  logger.info("boot", "Starting main scan loop...");
-  scanner.start();
+  // Step 13: Start copy pipeline + CLOB keep-alive
+  logger.info("boot", "Starting whale copy pipeline...");
+  copyPipeline.start();
+  copyExecutor.startClobPing();
 
   logger.info("boot", "═══════════════════════════════════════════");
   logger.info("boot", "  ROTHSTEIN is READY. All systems nominal.");
@@ -117,10 +119,15 @@ function startPeriodicTasks(): void {
     try { await contractScanner.scanForContracts(); } catch {}
   }, CONFIG.contractScanMs));
 
-  // Resolution check (every 30s)
+  // Resolution check (every 5s — fast updates for dashboard)
   intervals.push(setInterval(async () => {
     try { await positions.checkResolutions(); } catch {}
   }, CONFIG.resolutionCheckMs));
+
+  // API resolution cache cleanup (every 5 min — prevent memory leak)
+  intervals.push(setInterval(() => {
+    try { positions.cleanupResolutionCache(); } catch {}
+  }, 300_000));
 
   // Conditional TP check (every 10s — faster for time-sensitive exits)
   intervals.push(setInterval(async () => {
@@ -144,7 +151,19 @@ function startPeriodicTasks(): void {
     }
   }, CONFIG.heartbeatCheckMs));
 
-  logger.info("boot", "Periodic tasks started: contracts, resolution, TP check, book refresh, heartbeat");
+  // Strike price fetch (every 15s — lazy, only fetches if null)
+  // Bug #2 v4 fix: fetchStrikePrice was orphaned when scanner.ts was replaced
+  intervals.push(setInterval(async () => {
+    try {
+      for (const c of contractScanner.getActiveContracts()) {
+        if (c.strikePrice === null) {
+          await contractScanner.fetchStrikePrice(c);
+        }
+      }
+    } catch {}
+  }, 15_000));
+
+  logger.info("boot", "Periodic tasks started: contracts, resolution, TP check, book refresh, heartbeat, strikePrice");
 }
 
 // ─── Graceful Shutdown ─────────────────────────────────────────────────────
@@ -152,7 +171,8 @@ function startPeriodicTasks(): void {
 function shutdown(signal: string): void {
   logger.info("boot", `Received ${signal} — shutting down gracefully...`);
 
-  scanner.stop();
+  copyPipeline.stop();
+  copyExecutor.stopClobPing();
   server.stop();
 
   for (const iv of intervals) clearInterval(iv);
@@ -160,7 +180,7 @@ function shutdown(signal: string): void {
 
   binance.disconnect();
   polyBook.disconnect();
-  whales.stop();
+  whaleMonitor.stop();
   stopConfigWatcher();
 
   logger.info("boot", "ROTHSTEIN shutdown complete. Arrivederci.");

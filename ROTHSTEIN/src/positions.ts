@@ -329,10 +329,20 @@ export function loadFromDisk(): void {
 
 const _apiResolutionCache = new Map<string, { ts: number; result: boolean | null }>();
 
+// Periodic cache cleanup to prevent memory leak — remove entries older than 5 minutes
+export function cleanupResolutionCache(): void {
+  const now = Date.now();
+  for (const [key, entry] of _apiResolutionCache) {
+    if (now - entry.ts > 300_000) {
+      _apiResolutionCache.delete(key);
+    }
+  }
+}
+
 async function fetchResolutionFromApi(conditionId: string, side: string): Promise<boolean | null> {
-  // Rate-limit: don't re-query same condition within 30s
+  // Rate-limit: don't re-query same condition within 10s (was 30s, reduced for faster resolution)
   const cached = _apiResolutionCache.get(conditionId);
-  if (cached && Date.now() - cached.ts < 30_000) return cached.result;
+  if (cached && Date.now() - cached.ts < 10_000) return cached.result;
 
   try {
     const { data } = await axios.get(`${CONFIG.clobApi}/markets/${conditionId}`, {
@@ -340,11 +350,20 @@ async function fetchResolutionFromApi(conditionId: string, side: string): Promis
       headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" },
     });
 
-    // CLOB returns array of tokens with outcome/price/winner fields
-    // Each token: { token_id, outcome, price, winner }
-    const tokens = Array.isArray(data) ? data : [data];
+    // CLOB API returns a market object with a nested `tokens` array:
+    //   { condition_id, question, tokens: [{ token_id, outcome, price, winner }, ...] }
+    // Extract the tokens array from the response.
+    const tokens: any[] = Array.isArray(data?.tokens) ? data.tokens
+                        : Array.isArray(data) ? data
+                        : [];
 
-    // Find our side's token
+    if (tokens.length === 0) {
+      logger.debug("positions", `CLOB API returned no tokens for ${conditionId}`);
+      _apiResolutionCache.set(conditionId, { ts: Date.now(), result: null });
+      return null;
+    }
+
+    // Find our side's token (outcomes are "Up"/"Down" matching our Side type)
     const ourToken = tokens.find((t: any) =>
       t.outcome?.toLowerCase() === side.toLowerCase()
     );

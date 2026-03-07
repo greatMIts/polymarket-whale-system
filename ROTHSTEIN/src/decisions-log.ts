@@ -3,7 +3,7 @@
 // This is the ML training data pipeline. Every decision becomes a labeled row.
 // Resolution is backfilled when positions resolve.
 
-import { DecisionLogEntry, ScoringResult, ContractInfo, FeatureVector, Side, Asset } from "./types";
+import { DecisionLogEntry, ScoringResult, ContractInfo, FeatureVector, Side, Asset, WhaleSignal } from "./types";
 import { CONFIG } from "./config";
 import { appendJsonl, readJsonl } from "./persistence";
 import { logger } from "./logger";
@@ -21,10 +21,12 @@ export function logDecision(
   features: FeatureVector,
   scoring: ScoringResult,
   action: "SKIP" | "LOG_ONLY" | "TRADE",
-  sizeUsd: number
+  sizeUsd: number,
+  whaleSignal?: WhaleSignal
 ): DecisionLogEntry {
+  const now = Date.now();
   const entry: DecisionLogEntry = {
-    ts: Date.now(),
+    ts: now,
     conditionId: contract.conditionId,
     title: contract.title,
     side,
@@ -36,6 +38,13 @@ export function logDecision(
     sizeUsd,
     entryPrice: features.entryPrice,
     secsRemaining: features.secsRemaining,
+    // Whale copy fields — populated when triggered by a whale trade
+    triggeredByWallet: whaleSignal?.wallet,
+    whaleWalletLabel: whaleSignal?.walletLabel,
+    whaleTier: whaleSignal?.tier,
+    whaleUsdcSize: whaleSignal?.usdcSize,
+    whaleEntryPrice: whaleSignal?.price,
+    pipelineLatencyMs: whaleSignal?.detectedAt ? now - whaleSignal.detectedAt : undefined,
   };
 
   // Persist to JSONL
