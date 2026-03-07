@@ -34,6 +34,9 @@ let cleanupInterval: NodeJS.Timeout | null = null;
 let lastPollTime = 0;
 let walletsPolled = 0;
 let walletsPolledResetAt = 0;
+let pollCycleCount = 0;
+let totalSignalsFound = 0;
+let pollErrors = 0;
 
 const walletCursors = new Map<string, number>();         // wallet address → last seen ts
 const seenTrades = new Map<string, number>();             // txHash/compositeKey → timestamp
@@ -84,6 +87,8 @@ export function getAllRecentActivity(limit: number = 50): WhaleSignal[] {
 export function isActive(): boolean { return active; }
 export function getLastPollTime(): number { return lastPollTime; }
 export function getWalletsPolled(): number { return walletsPolled; }
+export function getPollCycleCount(): number { return pollCycleCount; }
+export function getTotalSignalsFound(): number { return totalSignalsFound; }
 
 // Legacy compat aliases
 export function isConnected(): boolean { return active; }
@@ -158,6 +163,10 @@ async function pollCycle(): Promise<void> {
       activeWallets.map(w => pollWallet(w.address, w.label))
     );
 
+    pollCycleCount++;
+    let cycleSignals = 0;
+    let cycleErrors = 0;
+
     // Process results — emit events for new signals
     for (const result of results) {
       if (result.status === "fulfilled" && result.value) {
@@ -165,8 +174,30 @@ async function pollCycle(): Promise<void> {
           signal.detectedAt = Date.now();
           storeSignal(signal);
           emitter.emit("whale-trade", signal);
+          cycleSignals++;
+          totalSignalsFound++;
         }
+      } else if (result.status === "rejected") {
+        cycleErrors++;
+        pollErrors++;
       }
+    }
+
+    // Log new signals at INFO level so they're always visible
+    if (cycleSignals > 0) {
+      logger.info("whale-monitor", `Poll #${pollCycleCount}: ${cycleSignals} new signal(s) detected`);
+    }
+
+    // Log errors at warn level
+    if (cycleErrors > 0) {
+      logger.warn("whale-monitor", `Poll #${pollCycleCount}: ${cycleErrors}/${activeWallets.length} wallet polls failed`);
+    }
+
+    // Heartbeat log every 60s (~12 cycles at 5s interval)
+    if (pollCycleCount % 12 === 0) {
+      logger.info("whale-monitor",
+        `Heartbeat: ${pollCycleCount} cycles | ${totalSignalsFound} signals found | ${pollErrors} errors | ${activeWallets.length} wallets | dedup cache: ${seenTrades.size}`
+      );
     }
   } finally {
     polling = false;
@@ -244,7 +275,8 @@ async function pollWallet(address: string, label: string): Promise<WhaleSignal[]
 
     return newSignals;
   } catch (e: any) {
-    logger.debug("whale-monitor", `Poll error for ${label}: ${e.message}`);
+    logger.warn("whale-monitor", `Poll error for ${label}: ${e.message}`);
+    pollErrors++;
     return [];
   }
 }
