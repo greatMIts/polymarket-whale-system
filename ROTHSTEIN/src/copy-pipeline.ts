@@ -35,11 +35,7 @@ import * as server from "./server";
 let pendingExecutions = 0;  // in-flight orders (execution mutex)
 let started = false;
 
-// Pipeline-level dedup: conditionId:side → timestamp of last execution
-// Prevents the same whale signal from triggering multiple copy trades
-// when overlapping poll responses return the same recent trades
-const executedKeys = new Map<string, number>();
-const EXECUTED_KEY_TTL = 300_000;  // 5 min — covers full contract lifecycle
+// Pipeline-level dedup REMOVED — whale-monitor txHash dedup handles true duplicates
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
@@ -95,23 +91,6 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
 
     // At this point contract and tokenId are guaranteed non-null by validator
     if (!contract || !tokenId) return;
-
-    // ─── Step 2b: Pipeline dedup (prevents duplicate executions) ─────────
-    // Same conditionId:side can only execute once per 5 min window.
-    // This stops overlapping poll responses from triggering 3+ copy trades
-    // from a single whale trade, which also prevents circuit breaker poisoning.
-    // Key is set EAGERLY here (before scoring/execution) so concurrent handlers
-    // see it immediately — prevents race condition where two handlers both
-    // pass the check before either sets the key.
-    const execKey = `${signal.conditionId}:${signal.side}`;
-    const lastExec = executedKeys.get(execKey);
-    if (lastExec && (Date.now() - lastExec) < EXECUTED_KEY_TTL) {
-      logger.debug("pipeline",
-        `Dedup: already processed ${signal.side} on ${signal.conditionId.slice(0, 8)}... ${Math.round((Date.now() - lastExec) / 1000)}s ago`
-      );
-      return;
-    }
-    executedKeys.set(execKey, Date.now());  // eager lock
 
     // ─── Step 3: Build features (~8ms, sync) ──────────────────────────────
 
@@ -186,14 +165,6 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
       // ─── Step 8: Open position (Bug #1 v4 — CRITICAL) ────────────────
       // Without this, trades are placed but never tracked/resolved/persisted
       positions.openPosition(execution);
-
-      // Cleanup old dedup keys periodically
-      if (executedKeys.size > 100) {
-        const cutoff = Date.now() - EXECUTED_KEY_TTL;
-        for (const [k, ts] of executedKeys) {
-          if (ts < cutoff) executedKeys.delete(k);
-        }
-      }
 
       const latencyMs = Date.now() - startMs;
       decisionsLog.logDecision(contract, signal.side, features, score, "TRADE", execution.sizeUsd, signal);

@@ -78,7 +78,6 @@ function buildPayload(): DashboardPayload {
     openPositions: positions.getOpen(),
     closedPositions: positions.getClosed(50),
     sessionStats: risk.getStats(),
-    circuitBreaker: risk.getCircuitBreaker(),
     whaleActivity: whales.getAllRecentActivity(50),
     deadHours: runtime.deadHours,
     paused: runtime.paused,
@@ -222,7 +221,7 @@ export function start(): void {
       }
       if (b.minTradeScore !== undefined) updates.minTradeScore = Math.max(30, Math.min(100, Number(b.minTradeScore)));
       if (b.sizingMultiplier !== undefined) updates.sizingMultiplier = Math.max(0, Math.min(5, Number(b.sizingMultiplier)));
-      if (b.maxConcurrentPositions !== undefined) updates.maxConcurrentPositions = Math.max(1, Math.min(20, Number(b.maxConcurrentPositions)));
+      if (b.maxConcurrentPositions !== undefined) updates.maxConcurrentPositions = Math.max(1, Math.min(200, Number(b.maxConcurrentPositions)));
       if (b.paused !== undefined) updates.paused = Boolean(b.paused);
 
       // Hard gates
@@ -235,8 +234,6 @@ export function start(): void {
 
       // Risk
       if (b.maxTotalAtRisk !== undefined) updates.maxTotalAtRisk = Math.max(5, Math.min(500, Number(b.maxTotalAtRisk)));
-      if (b.consecutiveLossThrottle !== undefined) updates.consecutiveLossThrottle = Math.max(1, Math.min(20, Number(b.consecutiveLossThrottle)));
-
       // Sizing
       if (b.betSizeUsdc !== undefined) updates.betSizeUsdc = Math.max(1, Math.min(1000, Number(b.betSizeUsdc)));
 
@@ -258,12 +255,6 @@ export function start(): void {
     const newConfig = updateRuntime({ paused: !current.paused });
     logger.event("server", newConfig.paused ? "PAUSED" : "RESUMED");
     res.json({ ok: true, paused: newConfig.paused });
-  });
-
-  // Reset circuit breaker
-  app.post("/api/reset-circuit-breaker", (_req, res) => {
-    risk.manualReset();
-    res.json({ ok: true });
   });
 
   // Reset session stats

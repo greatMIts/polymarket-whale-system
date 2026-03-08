@@ -283,19 +283,6 @@
   .score-low { background: var(--orange); }
   .score-skip { background: var(--dim); }
 
-  /* ─── Circuit Breaker Banner ─── */
-  .cb-banner {
-    background: rgba(255,145,0,0.15);
-    border: 1px solid var(--orange);
-    color: var(--orange);
-    padding: 8px 14px;
-    font-size: 12px;
-    display: none;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .cb-banner.show { display: flex; }
-
   /* ─── Config Inputs ─── */
   .config-row {
     display: flex;
@@ -407,10 +394,6 @@
 
 <!-- ─── Paused / Circuit Breaker Banners ─── -->
 <div class="paused-banner" id="pausedBanner">⛔ TRADING PAUSED</div>
-<div class="cb-banner" id="cbBanner">
-  <span>⚡ CIRCUIT BREAKER: <span id="cbReason"></span> — Resumes in <span id="cbCountdown"></span></span>
-  <button class="btn" onclick="resetCircuitBreaker()">Reset</button>
-</div>
 
 <!-- ─── Settings Button ─── -->
 <div class="settings-bar">
@@ -491,10 +474,6 @@
           <label>Max Total at Risk ($):</label>
           <input type="number" class="config-input" id="cfgMaxRisk" value="50" min="5" max="500" step="5" onchange="saveSettings()">
         </div>
-        <div class="config-row">
-          <label>Consec Loss Throttle:</label>
-          <input type="number" class="config-input" id="cfgConsecLoss" value="5" min="1" max="20" step="1" onchange="saveSettings()">
-        </div>
         <div style="margin-top:12px">
           <div class="section-label">Conditional Take-Profit</div>
         </div>
@@ -531,7 +510,6 @@
         <div class="controls" style="margin-bottom:16px;">
           <button class="btn" id="btnPause" onclick="togglePause()">⏸ Pause</button>
           <button class="btn btn-danger" onclick="resetSession()">↻ Reset Session</button>
-          <button class="btn" onclick="resetCircuitBreaker()">⚡ Reset CB</button>
         </div>
         <div class="section-label">Data Export</div>
         <button class="export-btn" onclick="exportDecisions()">📊 Export Decisions (CSV)</button>
@@ -762,7 +740,6 @@ function syncConfigInputs(cfg) {
   safeSet('cfgMaxPos', cfg.maxConcurrentPositions);
   safeSet('cfgBetSize', cfg.betSizeUsdc);
   safeSet('cfgMaxRisk', cfg.maxTotalAtRisk);
-  safeSet('cfgConsecLoss', cfg.consecutiveLossThrottle);
   safeSet('cfgTpMinPrice', cfg.conditionalTpMinPrice);
   safeSet('cfgTpEdge', cfg.conditionalTpEdgeThreshold);
 }
@@ -783,7 +760,6 @@ function saveSettings() {
       maxConcurrentPositions: parseInt(document.getElementById('cfgMaxPos').value),
       betSizeUsdc: parseFloat(document.getElementById('cfgBetSize').value),
       maxTotalAtRisk: parseFloat(document.getElementById('cfgMaxRisk').value),
-      consecutiveLossThrottle: parseInt(document.getElementById('cfgConsecLoss').value),
       conditionalTpMinPrice: parseFloat(document.getElementById('cfgTpMinPrice').value),
       conditionalTpEdgeThreshold: parseFloat(document.getElementById('cfgTpEdge').value),
     };
@@ -839,10 +815,6 @@ function togglePause() {
 function resetSession() {
   if (confirm('Reset all session stats?')) fetch('/api/reset-session', { method: 'POST', headers: authHeaders() });
 }
-function resetCircuitBreaker() {
-  fetch('/api/reset-circuit-breaker', { method: 'POST', headers: authHeaders() });
-}
-
 function exportDecisions() {
   const url = '/api/export/decisions' + (token ? '?token=' + token : '');
   window.open(url, '_blank');
@@ -901,17 +873,6 @@ function updateDashboard(s) {
   } else {
     btnPause.textContent = '⏸ Pause';
     btnPause.className = 'btn';
-  }
-
-  // Circuit breaker
-  const cb = s.circuitBreaker || {};
-  if (cb.active) {
-    document.getElementById('cbBanner').className = 'cb-banner show';
-    document.getElementById('cbReason').textContent = cb.reason;
-    const remaining = Math.max(0, Math.round((cb.resumeAt - Date.now()) / 1000));
-    document.getElementById('cbCountdown').textContent = remaining + 's';
-  } else {
-    document.getElementById('cbBanner').className = 'cb-banner';
   }
 
   // Dead hours

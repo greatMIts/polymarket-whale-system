@@ -196,7 +196,6 @@ export interface DashboardPayload {
   openPositions: Position[];
   closedPositions: Position[];
   sessionStats: SessionStats;
-  circuitBreaker: CircuitBreakerState;
   whaleActivity: WhaleSignal[];
   deadHours: number[];
   paused: boolean;
@@ -215,13 +214,6 @@ export interface SessionStats {
   winRate: number;
   consecutiveLosses: number;
   startedAt: number;
-}
-
-export interface CircuitBreakerState {
-  active: boolean;
-  reason: string;
-  resumeAt: number;
-  sizingMultiplier: number;    // 1.0 normal, 0.5 throttled, 0 paused
 }
 
 export interface SubsystemHealth {
@@ -277,8 +269,7 @@ export interface RuntimeConfig {
   maxSecsRemaining: number;    // default 300
 
   // Risk
-  maxTotalAtRisk: number;      // default 50
-  consecutiveLossThrottle: number;  // default 5
+  maxTotalAtRisk: number;      // default 500
 
   // Sizing
   betSizeUsdc: number;             // fixed USDC per trade (default 10)

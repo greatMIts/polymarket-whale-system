@@ -76,11 +76,8 @@ export const CONFIG = {
   ] as const,
 
   // Risk management
-  maxConcurrentPositions: 5,
-  maxTotalAtRisk: 50,
-  sessionLossCircuitBreaker: -30,
-  hourlyLossThrottle: -15,
-  consecutiveLossThrottle: 5,
+  maxConcurrentPositions: 100,
+  maxTotalAtRisk: 500,
 
   // Conditional take-profit (NOT blind TP)
   // Exit when edge drops below threshold while position is at this price+
@@ -138,7 +135,6 @@ const DEFAULT_RUNTIME: RuntimeConfig = {
 
   // Risk
   maxTotalAtRisk: CONFIG.maxTotalAtRisk,
-  consecutiveLossThrottle: CONFIG.consecutiveLossThrottle,
 
   // Sizing
   betSizeUsdc: 10,                  // fixed USDC per trade
