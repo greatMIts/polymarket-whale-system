@@ -292,7 +292,7 @@ export function start(): void {
       const decisions = entries.filter((e: any) => e.ts && e.conditionId && e.score !== undefined && !e.type);
       if (decisions.length === 0) { res.status(404).json({ error: "No decisions to export" }); return; }
 
-      const headers = ["ts","time","conditionId","title","asset","side","score","action","skipReason","sizeUsd","entryPrice","secsRemaining","edgeVsSpot","midEdge","momentumAligned","delta30s","hourBonus","whaleBonus","spotPrice","polyMid","bookSpread","delta5m","vol1h","fairValue","concurrentWhales","bestWalletTier","whaleMaxSize","whaleAgreement","triggeredByWallet","whaleWalletLabel","whaleTier","whaleUsdcSize","whaleEntryPrice","pipelineLatencyMs","resolution","won","pnl"];
+      const headers = ["ts","time","conditionId","title","asset","side","score","action","sizeUsd","entryPrice","secsRemaining","edgeVsSpot","midEdge","momentumAligned","delta30s","hourBonus","whaleBonus","spotPrice","polyMid","bookSpread","delta5m","vol1h","fairValue","concurrentWhales","bestWalletTier","whaleMaxSize","whaleAgreement","triggeredByWallet","whaleWalletLabel","whaleTier","whaleUsdcSize","whaleEntryPrice","pipelineLatencyMs","resolution","won","pnl"];
       const csvLines = [headers.join(",")];
       for (const d of decisions) {
         const f = d.features || {};
@@ -300,7 +300,7 @@ export function start(): void {
         // Prefix scored features with (pts) for component breakdown
         const row = [
           d.ts, new Date(d.ts).toISOString(), d.conditionId, `"${(d.title||'').replace(/"/g,'""')}"`,
-          d.asset, d.side, d.score, d.action, d.skipReason||'', d.sizeUsd||0, d.entryPrice?.toFixed(6)||'',
+          d.asset, d.side, d.score, d.action, d.sizeUsd||0, d.entryPrice?.toFixed(6)||'',
           c.timingScore !== undefined ? `(${c.timingScore}) ${Math.round(d.secsRemaining||0)}` : Math.round(d.secsRemaining||0),
           c.edgeScore !== undefined ? `(${c.edgeScore}) ${f.edgeVsSpot?.toFixed(6)||''}` : f.edgeVsSpot?.toFixed(6)||'',
           c.midEdgeScore !== undefined ? `(${c.midEdgeScore}) ${f.midEdge?.toFixed(6)||''}` : f.midEdge?.toFixed(6)||'',

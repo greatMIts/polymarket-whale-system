@@ -658,7 +658,7 @@
     <div class="card-body scroll-box">
       <table class="tbl" id="scoresTable">
         <thead>
-          <tr><th>Time</th><th>Contract</th><th>Asset</th><th>Side</th><th>Score</th><th>Action</th><th>Reason</th><th>Edge</th><th>MidE</th><th>Mom</th><th>Entry</th><th>Secs</th><th>Size</th></tr>
+          <tr><th>Time</th><th>Contract</th><th>Asset</th><th>Side</th><th>Score</th><th>Action</th><th>Edge</th><th>MidE</th><th>Mom</th><th>Entry</th><th>Secs</th><th>Size</th></tr>
         </thead>
         <tbody></tbody>
       </table>
@@ -1112,8 +1112,7 @@ function renderScores(scores) {
     const actionColor = d.action === 'TRADE' ? 'var(--green)' : 'var(--dim)';
     const whaleSize = d.whaleUsdcSize || d.sizeUsd;
     const period = fmtContract(d.title, null, d.secsRemaining, d.ts);
-    const reason = d.skipReason ? `<span style="color:var(--orange);font-size:10px">${d.skipReason}</span>` : '';
-    tr.innerHTML = `<td>${fmtTime(d.ts)}</td><td style="color:var(--cyan);font-size:10px">${period}</td><td style="color:var(--gold)">${d.asset}</td><td>${d.side}</td><td><span class="score-bar"><span class="score-bar-fill ${scoreBarClass(d.score)}" style="width:${d.score}%"></span></span><span style="color:${scoreColor(d.score)}">${d.score}</span></td><td style="color:${actionColor};font-weight:700">${d.action}</td><td>${reason}</td><td>${d.features?.edgeVsSpot?.toFixed(3)||'—'}</td><td>${d.features?.midEdge?.toFixed(3)||'—'}</td><td>${d.features?.momentumAligned?'✓':'✗'}</td><td>${d.entryPrice?.toFixed(3)||'—'}</td><td>${Math.round(d.secsRemaining)}s</td><td>${whaleSize ? '$'+Math.round(whaleSize) : '—'}</td>`;
+    tr.innerHTML = `<td>${fmtTime(d.ts)}</td><td style="color:var(--cyan);font-size:10px">${period}</td><td style="color:var(--gold)">${d.asset}</td><td>${d.side}</td><td><span class="score-bar"><span class="score-bar-fill ${scoreBarClass(d.score)}" style="width:${d.score}%"></span></span><span style="color:${scoreColor(d.score)}">${d.score}</span></td><td style="color:${actionColor};font-weight:700">${d.action}</td><td>${d.features?.edgeVsSpot?.toFixed(3)||'—'}</td><td>${d.features?.midEdge?.toFixed(3)||'—'}</td><td>${d.features?.momentumAligned?'✓':'✗'}</td><td>${d.entryPrice?.toFixed(3)||'—'}</td><td>${Math.round(d.secsRemaining)}s</td><td>${whaleSize ? '$'+Math.round(whaleSize) : '—'}</td>`;
     tbody.appendChild(tr);
   }
 }

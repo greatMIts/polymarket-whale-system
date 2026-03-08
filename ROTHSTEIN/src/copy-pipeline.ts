@@ -116,7 +116,7 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
     // ─── Step 5: Decision gate ────────────────────────────────────────────
 
     if (score.totalScore < CONFIG.minCopyScore) {
-      decisionsLog.logDecision(contract, signal.side, features, score, "SKIP", signal.usdcSize, signal, "SCORE_TOO_LOW");
+      decisionsLog.logDecision(contract, signal.side, features, score, "SKIP", signal.usdcSize, signal);
       logger.debug("pipeline",
         `Below threshold: ${signal.walletLabel} ${signal.side} score=${score.totalScore} (min=${CONFIG.minCopyScore})`
       );
@@ -129,7 +129,7 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
     const runtime = getRuntime();
     const totalInFlight = positions.getOpenCount() + pendingExecutions;
     if (totalInFlight >= runtime.maxConcurrentPositions) {
-      decisionsLog.logDecision(contract, signal.side, features, score, "SKIP", signal.usdcSize, signal, `POSITION_LIMIT_${totalInFlight}/${runtime.maxConcurrentPositions}`);
+      decisionsLog.logDecision(contract, signal.side, features, score, "SKIP", signal.usdcSize, signal);
       logger.debug("pipeline", `Position limit: ${totalInFlight}/${runtime.maxConcurrentPositions}`);
       return;
     }
@@ -137,17 +137,15 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
     // 6b. Risk manager check (Bug #1 v3: canTrade returns string|null)
     const blockReason = risk.canTrade();
     if (blockReason !== null) {
-      decisionsLog.logDecision(contract, signal.side, features, score, "SKIP", signal.usdcSize, signal, blockReason);
+      decisionsLog.logDecision(contract, signal.side, features, score, "SKIP", signal.usdcSize, signal);
       logger.debug("pipeline", `Risk blocked: ${blockReason}`);
       return;
     }
 
     // 6c. Duplicate position guard (Bug #4 v3) + in-flight race lock
     const lockKey = `${signal.conditionId}:${signal.side}`;
-    const hasPos = positions.hasPosition(signal.conditionId, signal.side);
-    const isInFlight = inFlightLock.has(lockKey);
-    if (hasPos || isInFlight) {
-      decisionsLog.logDecision(contract, signal.side, features, score, "SKIP", signal.usdcSize, signal, hasPos ? "DUPLICATE_POSITION" : "IN_FLIGHT");
+    if (positions.hasPosition(signal.conditionId, signal.side) || inFlightLock.has(lockKey)) {
+      decisionsLog.logDecision(contract, signal.side, features, score, "SKIP", signal.usdcSize, signal);
       logger.debug("pipeline", `Already positioned/in-flight on ${signal.conditionId.slice(0, 8)} ${signal.side}`);
       return;
     }
@@ -156,11 +154,10 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
     const sizeUsd = copyExecutor.computeSize(score);
     const shares = pnl.computeShares(sizeUsd, features.entryPrice);
     const additionalRisk = pnl.computeRisk(features.entryPrice, shares);
-    const currentRisk = positions.getTotalRiskUsd();
-    if (!risk.checkTotalRisk(currentRisk, additionalRisk)) {
-      decisionsLog.logDecision(contract, signal.side, features, score, "SKIP", signal.usdcSize, signal, `RISK_LIMIT_$${currentRisk.toFixed(0)}+$${additionalRisk.toFixed(0)}>$${runtime.maxTotalAtRisk}`);
+    if (!risk.checkTotalRisk(positions.getTotalRiskUsd(), additionalRisk)) {
+      decisionsLog.logDecision(contract, signal.side, features, score, "SKIP", signal.usdcSize, signal);
       logger.debug("pipeline",
-        `Risk limit: current=$${currentRisk.toFixed(2)} + $${additionalRisk.toFixed(2)} > $${runtime.maxTotalAtRisk}`
+        `Risk limit: current=$${positions.getTotalRiskUsd().toFixed(2)} + $${additionalRisk.toFixed(2)} > $${runtime.maxTotalAtRisk}`
       );
       return;
     }
@@ -192,7 +189,7 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
       logger.error("pipeline",
         `Execution failed for ${signal.walletLabel} ${signal.side}: ${e.message}`
       );
-      decisionsLog.logDecision(contract, signal.side, features, score, "SKIP", signal.usdcSize, signal, `EXEC_FAILED: ${e.message}`);
+      decisionsLog.logDecision(contract, signal.side, features, score, "SKIP", signal.usdcSize, signal);
     } finally {
       pendingExecutions--;
       // Release lock — hasPosition() now guards against future duplicates

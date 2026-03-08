@@ -117,8 +117,8 @@ export async function checkResolutions(): Promise<void> {
     const ageSinceExpiry = Math.round((now - (contract.endTs || (contract.ts + 300_000))) / 1000);
 
     // ─── Method 1 (PRIMARY): Binance spot price vs strike ──────────────
-    // For 5-min binary options, Binance spot is available immediately and
-    // correct in the vast majority of cases.
+    // For 5-min binary options, this is the most reliable resolution.
+    // If BTC/ETH is above strike → "Up" wins. Below → "Down" wins.
     const spotPrice = binance.getPrice(contract.asset);
     if (spotPrice && contract.strikePrice > 0) {
       const spotAboveStrike = spotPrice > contract.strikePrice;
@@ -145,15 +145,9 @@ export async function checkResolutions(): Promise<void> {
       }
     }
 
-    // ─── Method 3 (FALLBACK): CLOB API — official Polymarket resolution ─
-    // Only uses the explicit winner field (no price fallback — dead market
-    // prices are unreliable). Checked last as winner field may not be set
-    // immediately after expiry.
+    // ─── Method 3: CLOB API fallback ───────────────────────────────────
     const apiResult = await fetchResolutionFromApi(contract.conditionId, contract.side);
     if (apiResult !== null) {
-      logger.debug("positions",
-        `CLOB API resolution: ${id} ${contract.asset} ${contract.side} → ${apiResult ? "WIN" : "LOSS"} (expired ${ageSinceExpiry}s ago)`
-      );
       resolvePosition(id, apiResult ? "RESOLVED_WIN" : "RESOLVED_LOSS", apiResult, apiResult ? 1.0 : 0.0);
       continue;
     }
@@ -357,11 +351,8 @@ export function cleanupResolutionCache(): void {
 }
 
 async function fetchResolutionFromApi(conditionId: string, side: string): Promise<boolean | null> {
-  // Rate-limit: don't re-query same condition+side within 5s
-  // BUG FIX: cache key MUST include side — result is side-specific.
-  // Using just conditionId caused BOTH Up and Down to get the same cached answer.
-  const cacheKey = `${conditionId}:${side}`;
-  const cached = _apiResolutionCache.get(cacheKey);
+  // Rate-limit: don't re-query same condition within 5s
+  const cached = _apiResolutionCache.get(conditionId);
   if (cached && Date.now() - cached.ts < 5_000) return cached.result;
 
   try {
@@ -379,7 +370,7 @@ async function fetchResolutionFromApi(conditionId: string, side: string): Promis
 
     if (tokens.length === 0) {
       logger.debug("positions", `CLOB API returned no tokens for ${conditionId}`);
-      _apiResolutionCache.set(cacheKey, { ts: Date.now(), result: null });
+      _apiResolutionCache.set(conditionId, { ts: Date.now(), result: null });
       return null;
     }
 
@@ -389,27 +380,33 @@ async function fetchResolutionFromApi(conditionId: string, side: string): Promis
     );
 
     if (!ourToken) {
-      _apiResolutionCache.set(cacheKey, { ts: Date.now(), result: null });
+      _apiResolutionCache.set(conditionId, { ts: Date.now(), result: null });
       return null;
     }
 
-    // ONLY use the explicit winner field — this is the official Polymarket resolution.
-    // BUG FIX: Do NOT fall back to token price. After expiry, market makers pull
-    // orders and BOTH Up and Down token prices drop to ~0 (dead market). Using
-    // price <= 0.05 as a LOSS signal was resolving ALL positions as losses,
-    // including the actual winner. The winner field is the only reliable signal.
+    // Check if market has resolved: winner field is set, or price is 0 or 1
     if (ourToken.winner === true) {
-      _apiResolutionCache.set(cacheKey, { ts: Date.now(), result: true });
+      _apiResolutionCache.set(conditionId, { ts: Date.now(), result: true });
       return true;
     }
     if (ourToken.winner === false) {
-      _apiResolutionCache.set(cacheKey, { ts: Date.now(), result: false });
+      _apiResolutionCache.set(conditionId, { ts: Date.now(), result: false });
       return false;
     }
 
-    // Winner field not set yet — market not officially resolved.
-    // Return null so other methods (Book, Binance) can handle it.
-    _apiResolutionCache.set(cacheKey, { ts: Date.now(), result: null });
+    // Fallback: check if price is decisively resolved
+    const price = parseFloat(ourToken.price || "0.5");
+    if (price >= 0.95) {
+      _apiResolutionCache.set(conditionId, { ts: Date.now(), result: true });
+      return true;
+    }
+    if (price <= 0.05) {
+      _apiResolutionCache.set(conditionId, { ts: Date.now(), result: false });
+      return false;
+    }
+
+    // Not yet resolved
+    _apiResolutionCache.set(conditionId, { ts: Date.now(), result: null });
     return null;
   } catch (e: any) {
     logger.debug("positions", `CLOB API resolution check failed for ${conditionId}: ${e.message}`);
