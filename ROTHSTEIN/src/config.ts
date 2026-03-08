@@ -36,6 +36,7 @@ export const CONFIG = {
     { address: "0xd7e71e9b1c9d5e428e94906660c5a94537e51150", label: "0xd7e7" },
     { address: "0x113d4c0b5a6702ab045ea2cba7c3f71d51fc3ce8", label: "0x113d" },
     { address: "0xe594336603f4fb5d3ba4125a67021ab3b4347052", label: "0xe594" },
+    { address: "0xd0d6053c3c37e727402d84c14069780d360993aa", label: "0xd0d6" },
   ] as const,
 
   // Scanning intervals
@@ -103,7 +104,7 @@ export const CONFIG = {
     "0x571c": 1, "0xf696": 1, "0x0ea5": 1,           // Tier 1: 55%+ WR
     "0x63ce": 2, "0x37c9": 2, "0x1979": 2, "0x1d00": 2,  // Tier 2: ~49-51%
     "0x2d8b": 3, "0xa9ae": 3,                          // Tier 3: bad/monitor
-    "0xd7e7": 3, "0x113d": 3, "0xe594": 3,            // Tier 3: new, no data
+    "0xd7e7": 3, "0x113d": 3, "0xe594": 3, "0xd0d6": 3, // Tier 3: new, no data
   } as Record<string, number>,
 
   // Hour scoring: UTC hour → bonus points (-5 to +5)
