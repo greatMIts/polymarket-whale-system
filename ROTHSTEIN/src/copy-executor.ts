@@ -77,11 +77,19 @@ export async function executeCopy(
     throw new Error("NO_BOOK_DATA");
   }
   const currentAsk = book.ask;
+  const isLive = CONFIG.mode === "LIVE";
 
-  // 3. Price staleness check — market moved > 3 cents since whale's entry
-  if (Math.abs(currentAsk - signal.price) > 0.03) {
-    throw new Error(`PRICE_STALE: ask=${currentAsk.toFixed(4)} whale=${signal.price.toFixed(4)} diff=${Math.abs(currentAsk - signal.price).toFixed(4)}`);
+  // 3. Price staleness check — LIVE mode only
+  // In paper mode we simulate fills at the whale's entry price, so staleness is irrelevant.
+  // In live mode, reject if market moved > 6 cents since whale's entry (accounts for latency).
+  if (isLive) {
+    if (Math.abs(currentAsk - signal.price) > 0.06) {
+      throw new Error(`PRICE_STALE: ask=${currentAsk.toFixed(4)} whale=${signal.price.toFixed(4)} diff=${Math.abs(currentAsk - signal.price).toFixed(4)}`);
+    }
   }
+
+  // Entry price: paper mode uses whale's price (simulated fill), live mode uses book ask
+  const entryPrice = isLive ? currentAsk : signal.price;
 
   // 4. Build WhaleCopyMeta (12 fields)
   const whaleCopy: WhaleCopyMeta = {
@@ -94,19 +102,19 @@ export async function executeCopy(
     whaleDetectedAt: signal.detectedAt || now,
     pipelineLatencyMs: now - (signal.detectedAt || now),
     whaleToExecutionMs: now - signal.ts,
-    slippageVsWhale: currentAsk - signal.price,
+    slippageVsWhale: entryPrice - signal.price,
     bookSpreadAtEntry: features.bookSpread,
     concurrentWhaleSignals: features.concurrentWhales,
   };
 
-  // 5. Place order
+  // 5. Place order (live mode only)
   let orderId: string | undefined;
-  if (CONFIG.mode === "LIVE") {
+  if (isLive) {
     orderId = await executeLiveOrder(tokenId, signal.side, sizeUsd, currentAsk);
   }
 
   // 6. Build TradeExecution
-  const shares = sizeUsd / currentAsk;
+  const shares = sizeUsd / entryPrice;
   const trade: TradeExecution = {
     id: generateTradeId(),
     ts: now,
@@ -115,7 +123,7 @@ export async function executeCopy(
     title: contract.title,
     side: signal.side,
     asset: contract.asset,
-    entryPrice: currentAsk,
+    entryPrice,
     sizeUsd,
     shares,
     score: score.totalScore,

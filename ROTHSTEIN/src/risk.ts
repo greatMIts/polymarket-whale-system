@@ -81,6 +81,31 @@ export function recordResult(pnlAmount: number, won: boolean): void {
 }
 
 /**
+ * Correct a previously recorded result (Pass 2 resolution correction).
+ * Reverses the old result and applies the corrected one.
+ */
+export function recordCorrection(oldPnl: number, oldWon: boolean, newPnl: number, newWon: boolean): void {
+  // Reverse old result
+  stats.pnl -= oldPnl;
+  if (oldWon) {
+    stats.wins--;
+  } else {
+    stats.losses--;
+  }
+  stats.trades--;
+
+  // Apply corrected result
+  recordResult(newPnl, newWon);
+
+  logger.event("risk", "RESULT_CORRECTED", {
+    oldPnl: oldPnl.toFixed(4),
+    newPnl: newPnl.toFixed(4),
+    oldWon,
+    newWon,
+  });
+}
+
+/**
  * Check if total capital at risk is within limits.
  */
 export function checkTotalRisk(currentRiskUsd: number, additionalRiskUsd: number): boolean {
