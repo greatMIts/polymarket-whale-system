@@ -129,11 +129,6 @@ function startPeriodicTasks(): void {
     try { positions.cleanupResolutionCache(); } catch {}
   }, 300_000));
 
-  // Pass 2: Resolution correction (every 30s — checks recent Binance calls against CLOB API winner)
-  intervals.push(setInterval(async () => {
-    try { await positions.checkResolutionCorrections(); } catch {}
-  }, 30_000));
-
   // Conditional TP check (every 10s — faster for time-sensitive exits)
   intervals.push(setInterval(async () => {
     try { await positions.checkConditionalTp(); } catch {}
@@ -168,7 +163,7 @@ function startPeriodicTasks(): void {
     } catch {}
   }, 15_000));
 
-  logger.info("boot", "Periodic tasks started: contracts, resolution, correction, TP check, book refresh, heartbeat, strikePrice");
+  logger.info("boot", "Periodic tasks started: contracts, resolution, TP check, book refresh, heartbeat, strikePrice");
 }
 
 // ─── Graceful Shutdown ─────────────────────────────────────────────────────

@@ -115,10 +115,13 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
 
     // ─── Step 5: Decision gate ────────────────────────────────────────────
 
-    if (score.totalScore < CONFIG.minCopyScore) {
+    // Use runtime config so dashboard is the prime manager of score threshold
+    const runtime = getRuntime();
+
+    if (score.totalScore < runtime.minTradeScore) {
       decisionsLog.logDecision(contract, signal.side, features, score, "SKIP", signal.usdcSize, signal, "SCORE_TOO_LOW");
       logger.debug("pipeline",
-        `Below threshold: ${signal.walletLabel} ${signal.side} score=${score.totalScore} (min=${CONFIG.minCopyScore})`
+        `Below threshold: ${signal.walletLabel} ${signal.side} score=${score.totalScore} (min=${runtime.minTradeScore})`
       );
       return;
     }
@@ -126,7 +129,6 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
     // ─── Step 6: Risk checks ──────────────────────────────────────────────
 
     // 6a. Position limit + execution mutex (Bug #5 v1)
-    const runtime = getRuntime();
     const totalInFlight = positions.getOpenCount() + pendingExecutions;
     if (totalInFlight >= runtime.maxConcurrentPositions) {
       decisionsLog.logDecision(contract, signal.side, features, score, "SKIP", signal.usdcSize, signal, `POSITION_LIMIT_${totalInFlight}/${runtime.maxConcurrentPositions}`);
