@@ -234,6 +234,7 @@ export interface DecisionLogEntry {
   components: ScoreComponents;
   features: FeatureVector;
   action: "SKIP" | "TRADE";
+  skipReason?: string;
   sizeUsd: number;
   entryPrice: number;
   secsRemaining: number;
