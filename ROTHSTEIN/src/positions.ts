@@ -97,50 +97,47 @@ export async function checkResolutions(): Promise<void> {
 
   for (const [id, pos] of openPositions) {
     const contract = pos.trade;
-
-    // Has the contract's end time passed?
-    // We check if the market has resolved by looking at current book state.
-    // A resolved market typically shows price at ~0.99-1.00 (winner) or ~0.00-0.01 (loser).
     const tokenId = contract.tokenId;
     const book = polyBook.getBook(tokenId);
 
-    // Method 1: Contract time expired + book shows resolution
-    // Use actual endTs from contract, NOT trade timestamp
+    // Contract expired check — endTs is in milliseconds
     const contractExpired = contract.endTs > 0
       ? contract.endTs < now
       : (contract.ts + 5 * 60 * 1000) < now;  // fallback for legacy positions without endTs
 
-    // Method 2: Market price strongly indicates resolution
-    if (book && book.mid > 0) {
-      const marketPrice = book.mid;
+    // Diagnostic: log once per position when we first detect expiry
+    if (contractExpired) {
+      const ageSinceExpiry = Math.round((now - (contract.endTs || (contract.ts + 300_000))) / 1000);
+      const bookMid = book ? book.mid : -1;
+      logger.debug("positions",
+        `Resolution check: ${id} expired ${ageSinceExpiry}s ago, book.mid=${bookMid}, endTs=${contract.endTs}, now=${now}`
+      );
+    }
 
-      // Clear win: market price > 0.95 on our token
-      if (marketPrice >= 0.95 && contractExpired) {
-        resolvePosition(id, "RESOLVED_WIN", true, marketPrice);
+    // Method 1 & 2: Book shows clear resolution after expiry
+    if (book && book.mid > 0 && contractExpired) {
+      if (book.mid >= 0.95) {
+        resolvePosition(id, "RESOLVED_WIN", true, book.mid);
         continue;
       }
-
-      // Clear loss: market price < 0.05 on our token
-      if (marketPrice <= 0.05 && contractExpired) {
-        resolvePosition(id, "RESOLVED_LOSS", false, marketPrice);
+      if (book.mid <= 0.05) {
+        resolvePosition(id, "RESOLVED_LOSS", false, book.mid);
         continue;
       }
     }
 
-    // Method 3: Contract expired but book is dead — query CLOB API directly
-    // After expiry, market makers pull orders so book.mid → 0. We can't rely
-    // on the book for resolution. Instead, query the CLOB API for the market's
-    // resolved token prices.
-    if (contractExpired && (!book || book.mid === 0)) {
+    // Method 3: Contract expired — query CLOB API
+    // After expiry, market makers pull orders so book goes dead.
+    // Query immediately once expired, don't wait for book.mid === 0.
+    if (contractExpired) {
       const apiResult = await fetchResolutionFromApi(contract.conditionId, contract.side);
       if (apiResult !== null) {
-        const won = apiResult;
-        resolvePosition(id, won ? "RESOLVED_WIN" : "RESOLVED_LOSS", won, won ? 1.0 : 0.0);
+        resolvePosition(id, apiResult ? "RESOLVED_WIN" : "RESOLVED_LOSS", apiResult, apiResult ? 1.0 : 0.0);
         continue;
       }
     }
 
-    // Method 4: Absolute timeout (30 min) — last resort, query API one more time
+    // Method 4: Absolute timeout (30 min) — last resort
     if (now - pos.openedAt > 1_800_000) {
       const apiResult = await fetchResolutionFromApi(contract.conditionId, contract.side);
       if (apiResult !== null) {
@@ -340,9 +337,9 @@ export function cleanupResolutionCache(): void {
 }
 
 async function fetchResolutionFromApi(conditionId: string, side: string): Promise<boolean | null> {
-  // Rate-limit: don't re-query same condition within 10s (was 30s, reduced for faster resolution)
+  // Rate-limit: don't re-query same condition within 5s
   const cached = _apiResolutionCache.get(conditionId);
-  if (cached && Date.now() - cached.ts < 10_000) return cached.result;
+  if (cached && Date.now() - cached.ts < 5_000) return cached.result;
 
   try {
     const { data } = await axios.get(`${CONFIG.clobApi}/markets/${conditionId}`, {
