@@ -103,19 +103,31 @@ export async function checkResolutions(): Promise<void> {
     // Contract expired check — endTs is in milliseconds
     const contractExpired = contract.endTs > 0
       ? contract.endTs < now
-      : (contract.ts + 5 * 60 * 1000) < now;  // fallback for legacy positions without endTs
+      : (contract.ts + 5 * 60 * 1000) < now;
 
-    // Diagnostic: log once per position when we first detect expiry
-    if (contractExpired) {
-      const ageSinceExpiry = Math.round((now - (contract.endTs || (contract.ts + 300_000))) / 1000);
-      const bookMid = book ? book.mid : -1;
+    if (!contractExpired) continue;
+
+    const ageSinceExpiry = Math.round((now - (contract.endTs || (contract.ts + 300_000))) / 1000);
+
+    // ─── Method 1 (PRIMARY): Binance spot price vs strike ──────────────
+    // For 5-min binary options, this is the most reliable resolution.
+    // If BTC/ETH is above strike → "Up" wins. Below → "Down" wins.
+    const spotPrice = binance.getPrice(contract.asset);
+    if (spotPrice && contract.strikePrice > 0) {
+      const spotAboveStrike = spotPrice > contract.strikePrice;
+      const won = (contract.side === "Up" && spotAboveStrike) ||
+                  (contract.side === "Down" && !spotAboveStrike);
+
       logger.debug("positions",
-        `Resolution check: ${id} expired ${ageSinceExpiry}s ago, book.mid=${bookMid}, endTs=${contract.endTs}, now=${now}`
+        `Binance resolution: ${id} ${contract.asset} ${contract.side} strike=${contract.strikePrice.toFixed(2)} spot=${spotPrice.toFixed(2)} → ${won ? "WIN" : "LOSS"} (expired ${ageSinceExpiry}s ago)`
       );
+
+      resolvePosition(id, won ? "RESOLVED_WIN" : "RESOLVED_LOSS", won, won ? 1.0 : 0.0);
+      continue;
     }
 
-    // Method 1 & 2: Book shows clear resolution after expiry
-    if (book && book.mid > 0 && contractExpired) {
+    // ─── Method 2: Book shows clear resolution ─────────────────────────
+    if (book && book.mid > 0) {
       if (book.mid >= 0.95) {
         resolvePosition(id, "RESOLVED_WIN", true, book.mid);
         continue;
@@ -126,28 +138,23 @@ export async function checkResolutions(): Promise<void> {
       }
     }
 
-    // Method 3: Contract expired — query CLOB API
-    // After expiry, market makers pull orders so book goes dead.
-    // Query immediately once expired, don't wait for book.mid === 0.
-    if (contractExpired) {
-      const apiResult = await fetchResolutionFromApi(contract.conditionId, contract.side);
-      if (apiResult !== null) {
-        resolvePosition(id, apiResult ? "RESOLVED_WIN" : "RESOLVED_LOSS", apiResult, apiResult ? 1.0 : 0.0);
-        continue;
-      }
-    }
-
-    // Method 4: Absolute timeout (30 min) — last resort
-    if (now - pos.openedAt > 1_800_000) {
-      const apiResult = await fetchResolutionFromApi(contract.conditionId, contract.side);
-      if (apiResult !== null) {
-        resolvePosition(id, apiResult ? "RESOLVED_WIN" : "RESOLVED_LOSS", apiResult, apiResult ? 1.0 : 0.0);
-      } else {
-        logger.warn("positions", `Position ${id} aged out (>30 min), API inconclusive, marking expired`);
-        resolvePosition(id, "EXPIRED", false, 0);
-      }
+    // ─── Method 3: CLOB API fallback ───────────────────────────────────
+    const apiResult = await fetchResolutionFromApi(contract.conditionId, contract.side);
+    if (apiResult !== null) {
+      resolvePosition(id, apiResult ? "RESOLVED_WIN" : "RESOLVED_LOSS", apiResult, apiResult ? 1.0 : 0.0);
       continue;
     }
+
+    // ─── Method 4: Absolute timeout (30 min) — last resort ─────────────
+    if (now - pos.openedAt > 1_800_000) {
+      logger.warn("positions", `Position ${id} aged out (>30 min), marking expired`);
+      resolvePosition(id, "EXPIRED", false, 0);
+      continue;
+    }
+
+    logger.debug("positions",
+      `Unresolved: ${id} expired ${ageSinceExpiry}s ago, no spot/strike/book/API data`
+    );
   }
 }
 
