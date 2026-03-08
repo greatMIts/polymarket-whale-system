@@ -263,6 +263,13 @@ export function start(): void {
     res.json({ ok: true });
   });
 
+  // Clear closed positions from dashboard
+  app.post("/api/clear-closed", (_req, res) => {
+    const cleared = positions.clearClosed();
+    risk.resetSession();
+    res.json({ ok: true, cleared });
+  });
+
   // ─── Data Export Endpoints ────────────────────────────────────────────
 
   // Export decisions as CSV

@@ -32,6 +32,13 @@ export function getClosed(limit?: number): Position[] {
   return closedPositions.slice(-n);
 }
 
+export function clearClosed(): number {
+  const count = closedPositions.length;
+  closedPositions.length = 0;
+  logger.info("positions", `Cleared ${count} closed positions from memory`);
+  return count;
+}
+
 export function getOpenCount(): number {
   return openPositions.size;
 }
