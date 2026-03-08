@@ -129,11 +129,11 @@ async function runScanCycle(): Promise<void> {
             decisionsLog.logDecision(contract, side, features, scoring, "TRADE", execution.sizeUsd);
           } else {
             // Trade blocked by risk/position limits — still log
-            decisionsLog.logDecision(contract, side, features, scoring, "LOG_ONLY", scoring.suggestedSize);
+            decisionsLog.logDecision(contract, side, features, scoring, "SKIP", scoring.suggestedSize);
           }
         } else if (scoring.totalScore >= 50) {
           // LOG_ONLY — worth watching
-          decisionsLog.logDecision(contract, side, features, scoring, "LOG_ONLY", 0);
+          decisionsLog.logDecision(contract, side, features, scoring, "SKIP", 0);
         } else if (scoring.totalScore >= 30) {
           // SKIP — but log for training data (every 45th cycle to reduce noise at 1s interval)
           if (scanCount % 45 === 0) {

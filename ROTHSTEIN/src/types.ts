@@ -9,7 +9,6 @@ export type Direction = "UP" | "DOWN" | "FLAT";
 
 export type ScoreRecommendation =
   | "SKIP"
-  | "LOG_ONLY"
   | "SMALL"
   | "STANDARD"
   | "ELEVATED"
@@ -234,7 +233,7 @@ export interface DecisionLogEntry {
   score: number;
   components: ScoreComponents;
   features: FeatureVector;
-  action: "SKIP" | "LOG_ONLY" | "TRADE";
+  action: "SKIP" | "TRADE";
   sizeUsd: number;
   entryPrice: number;
   secsRemaining: number;

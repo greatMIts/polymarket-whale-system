@@ -99,7 +99,7 @@ function getRecommendation(score: number): ScoreRecommendation {
   if (score >= 80) return "HIGH";
   if (score >= 70) return "ELEVATED";
   if (score >= 60) return "STANDARD";
-  if (score >= 50) return "LOG_ONLY";
+  if (score >= 50) return "SMALL";
   return "SKIP";
 }
 

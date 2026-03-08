@@ -20,7 +20,7 @@ export function logDecision(
   side: Side,
   features: FeatureVector,
   scoring: ScoringResult,
-  action: "SKIP" | "LOG_ONLY" | "TRADE",
+  action: "SKIP" | "TRADE",
   sizeUsd: number,
   whaleSignal?: WhaleSignal
 ): DecisionLogEntry {
