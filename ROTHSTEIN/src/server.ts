@@ -292,16 +292,24 @@ export function start(): void {
       const decisions = entries.filter((e: any) => e.ts && e.conditionId && e.score !== undefined && !e.type);
       if (decisions.length === 0) { res.status(404).json({ error: "No decisions to export" }); return; }
 
-      const headers = ["ts","time","conditionId","title","asset","side","score","action","sizeUsd","entryPrice","secsRemaining","edgeVsSpot","midEdge","momentumAligned","spotPrice","polyMid","bookSpread","delta30s","delta5m","vol1h","fairValue","concurrentWhales","bestWalletTier","whaleMaxSize","whaleAgreement","triggeredByWallet","whaleWalletLabel","whaleTier","whaleUsdcSize","whaleEntryPrice","pipelineLatencyMs","resolution","won","pnl"];
+      const headers = ["ts","time","conditionId","title","asset","side","score","action","sizeUsd","entryPrice","secsRemaining","edgeVsSpot","midEdge","momentumAligned","delta30s","hourBonus","whaleBonus","spotPrice","polyMid","bookSpread","delta5m","vol1h","fairValue","concurrentWhales","bestWalletTier","whaleMaxSize","whaleAgreement","triggeredByWallet","whaleWalletLabel","whaleTier","whaleUsdcSize","whaleEntryPrice","pipelineLatencyMs","resolution","won","pnl"];
       const csvLines = [headers.join(",")];
       for (const d of decisions) {
         const f = d.features || {};
+        const c = d.components || {};
+        // Prefix scored features with (pts) for component breakdown
         const row = [
           d.ts, new Date(d.ts).toISOString(), d.conditionId, `"${(d.title||'').replace(/"/g,'""')}"`,
           d.asset, d.side, d.score, d.action, d.sizeUsd||0, d.entryPrice?.toFixed(6)||'',
-          Math.round(d.secsRemaining||0), f.edgeVsSpot?.toFixed(6)||'', f.midEdge?.toFixed(6)||'',
-          f.momentumAligned||false, f.spotPrice?.toFixed(2)||'', f.polyMid?.toFixed(4)||'',
-          f.bookSpread?.toFixed(4)||'', f.delta30s?.toFixed(6)||'', f.delta5m?.toFixed(6)||'',
+          c.timingScore !== undefined ? `(${c.timingScore}) ${Math.round(d.secsRemaining||0)}` : Math.round(d.secsRemaining||0),
+          c.edgeScore !== undefined ? `(${c.edgeScore}) ${f.edgeVsSpot?.toFixed(6)||''}` : f.edgeVsSpot?.toFixed(6)||'',
+          c.midEdgeScore !== undefined ? `(${c.midEdgeScore}) ${f.midEdge?.toFixed(6)||''}` : f.midEdge?.toFixed(6)||'',
+          c.momentumScore !== undefined ? `(${c.momentumScore}) ${f.momentumAligned||false}` : f.momentumAligned||false,
+          c.activityScore !== undefined ? `(${c.activityScore}) ${f.delta30s?.toFixed(6)||''}` : f.delta30s?.toFixed(6)||'',
+          c.hourBonus !== undefined ? `(${c.hourBonus})` : '',
+          c.whaleBonus !== undefined ? `(${c.whaleBonus})` : '',
+          f.spotPrice?.toFixed(2)||'', f.polyMid?.toFixed(4)||'',
+          f.bookSpread?.toFixed(4)||'', f.delta5m?.toFixed(6)||'',
           f.vol1h?.toFixed(4)||'', f.fairValue?.toFixed(6)||'', f.concurrentWhales||0,
           f.bestWalletTier||0, f.whaleMaxSize?.toFixed(2)||0, f.whaleAgreement||false,
           d.triggeredByWallet||'', d.whaleWalletLabel||'', d.whaleTier===undefined?'':d.whaleTier,
@@ -338,20 +346,27 @@ export function start(): void {
       const allPositions = [...posMap.values()];
       if (allPositions.length === 0) { res.status(404).json({ error: "No trades to export" }); return; }
 
-      const headers = ["ts","time","id","mode","asset","side","title","entryPrice","sizeUsd","shares","score","edgeVsSpot","midEdge","momentumAligned","secsRemaining","spotPrice","polyMid","bookSpread","delta30s","delta5m","vol1h","fairValue","concurrentWhales","bestWalletTier","whaleMaxSize","strikePrice","conditionId","triggeredByWallet","whaleWalletLabel","whaleTier","whaleUsdcSize","whaleEntryPrice","pipelineLatencyMs","whaleToExecutionMs","slippageVsWhale","bookSpreadAtEntry","status","resolution","won","pnl","exitPrice","closedAt"];
+      const headers = ["ts","time","id","mode","asset","side","title","entryPrice","sizeUsd","shares","score","edgeVsSpot","midEdge","momentumAligned","secsRemaining","delta30s","hourBonus","whaleBonus","spotPrice","polyMid","bookSpread","delta5m","vol1h","fairValue","concurrentWhales","bestWalletTier","whaleMaxSize","strikePrice","conditionId","triggeredByWallet","whaleWalletLabel","whaleTier","whaleUsdcSize","whaleEntryPrice","pipelineLatencyMs","whaleToExecutionMs","slippageVsWhale","bookSpreadAtEntry","status","resolution","won","pnl","exitPrice","closedAt"];
       const csvLines = [headers.join(",")];
       for (const p of allPositions) {
         const t = p.trade || {};
         const f = t.features || {};
         const r = p.resolvedData || {};
         const wc = t.whaleCopy || {};
+        const c = t.components || {};
         const row = [
           t.ts||p.openedAt, new Date(t.ts||p.openedAt).toISOString(), t.id||p.id, t.mode||'PAPER',
           t.asset||'', t.side||'', `"${(t.title||'').replace(/"/g,'""')}"`,
           t.entryPrice?.toFixed(6)||'', t.sizeUsd||'', t.shares?.toFixed(4)||'', t.score||'',
-          f.edgeVsSpot?.toFixed(6)||'', f.midEdge?.toFixed(6)||'', f.momentumAligned||false,
-          Math.round(f.secsRemaining||0), f.spotPrice?.toFixed(2)||'', f.polyMid?.toFixed(4)||'',
-          f.bookSpread?.toFixed(4)||'', f.delta30s?.toFixed(6)||'', f.delta5m?.toFixed(6)||'',
+          c.edgeScore !== undefined ? `(${c.edgeScore}) ${f.edgeVsSpot?.toFixed(6)||''}` : f.edgeVsSpot?.toFixed(6)||'',
+          c.midEdgeScore !== undefined ? `(${c.midEdgeScore}) ${f.midEdge?.toFixed(6)||''}` : f.midEdge?.toFixed(6)||'',
+          c.momentumScore !== undefined ? `(${c.momentumScore}) ${f.momentumAligned||false}` : f.momentumAligned||false,
+          c.timingScore !== undefined ? `(${c.timingScore}) ${Math.round(f.secsRemaining||0)}` : Math.round(f.secsRemaining||0),
+          c.activityScore !== undefined ? `(${c.activityScore}) ${f.delta30s?.toFixed(6)||''}` : f.delta30s?.toFixed(6)||'',
+          c.hourBonus !== undefined ? `(${c.hourBonus})` : '',
+          c.whaleBonus !== undefined ? `(${c.whaleBonus})` : '',
+          f.spotPrice?.toFixed(2)||'', f.polyMid?.toFixed(4)||'',
+          f.bookSpread?.toFixed(4)||'', f.delta5m?.toFixed(6)||'',
           f.vol1h?.toFixed(4)||'', f.fairValue?.toFixed(6)||'', f.concurrentWhales||0,
           f.bestWalletTier||0, f.whaleMaxSize?.toFixed(2)||0, t.strikePrice?.toFixed(2)||'',
           t.conditionId||'',

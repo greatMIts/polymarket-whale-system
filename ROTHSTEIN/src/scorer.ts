@@ -18,13 +18,15 @@ function scoreEdge(edgeVsSpot: number): number {
 }
 
 // ─── Score Component: MidEdge (0-20 points) ─────────────────────────────────
+// midEdge = polyMid - entryPrice (matches spy-server convention)
+// Positive = buying below mid (good entry). Negative = buying above mid.
 
 function scoreMidEdge(midEdge: number): number {
-  if (midEdge < -0.20) return 20;     // extreme bargain entry
-  if (midEdge < -0.10) return 15;     // good entry
-  if (midEdge < 0) return 10;         // acceptable
-  if (midEdge < 0.05) return 5;       // neutral
-  return 0;                            // above mid, no advantage
+  if (midEdge > 0.20) return 20;      // extreme bargain, far below mid
+  if (midEdge > 0.10) return 15;      // good entry, below mid
+  if (midEdge > 0) return 10;         // at or below mid
+  if (midEdge > -0.05) return 5;      // slightly above mid (normal ask entry)
+  return 0;                            // way above mid, no advantage
 }
 
 // ─── Score Component: Momentum Alignment (0-15 points) ──────────────────────

@@ -66,10 +66,11 @@ export function computeEdgeVsSpot(fairValue: number, marketPrice: number): numbe
 
 // ─── Mid Edge ───────────────────────────────────────────────────────────────
 // How far below (or above) the book midpoint our entry is.
-// Negative = buying below mid (good entry). Positive = above mid.
+// Positive = buying below mid (good entry). Negative = above mid.
+// Matches spy-server logic: polyMid - price.
 
 export function computeMidEdge(polyMid: number, entryPrice: number): number {
-  return entryPrice - polyMid;
+  return polyMid - entryPrice;
 }
 
 // ─── Realized Volatility ────────────────────────────────────────────────────
