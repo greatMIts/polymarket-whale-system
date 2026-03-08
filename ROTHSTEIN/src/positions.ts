@@ -355,8 +355,11 @@ export function cleanupResolutionCache(): void {
 }
 
 async function fetchResolutionFromApi(conditionId: string, side: string): Promise<boolean | null> {
-  // Rate-limit: don't re-query same condition within 5s
-  const cached = _apiResolutionCache.get(conditionId);
+  // Rate-limit: don't re-query same condition+side within 5s
+  // BUG FIX: cache key MUST include side — result is side-specific.
+  // Using just conditionId caused BOTH Up and Down to get the same cached answer.
+  const cacheKey = `${conditionId}:${side}`;
+  const cached = _apiResolutionCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < 5_000) return cached.result;
 
   try {
@@ -374,7 +377,7 @@ async function fetchResolutionFromApi(conditionId: string, side: string): Promis
 
     if (tokens.length === 0) {
       logger.debug("positions", `CLOB API returned no tokens for ${conditionId}`);
-      _apiResolutionCache.set(conditionId, { ts: Date.now(), result: null });
+      _apiResolutionCache.set(cacheKey, { ts: Date.now(), result: null });
       return null;
     }
 
@@ -384,33 +387,27 @@ async function fetchResolutionFromApi(conditionId: string, side: string): Promis
     );
 
     if (!ourToken) {
-      _apiResolutionCache.set(conditionId, { ts: Date.now(), result: null });
+      _apiResolutionCache.set(cacheKey, { ts: Date.now(), result: null });
       return null;
     }
 
-    // Check if market has resolved: winner field is set, or price is 0 or 1
+    // ONLY use the explicit winner field — this is the official Polymarket resolution.
+    // BUG FIX: Do NOT fall back to token price. After expiry, market makers pull
+    // orders and BOTH Up and Down token prices drop to ~0 (dead market). Using
+    // price <= 0.05 as a LOSS signal was resolving ALL positions as losses,
+    // including the actual winner. The winner field is the only reliable signal.
     if (ourToken.winner === true) {
-      _apiResolutionCache.set(conditionId, { ts: Date.now(), result: true });
+      _apiResolutionCache.set(cacheKey, { ts: Date.now(), result: true });
       return true;
     }
     if (ourToken.winner === false) {
-      _apiResolutionCache.set(conditionId, { ts: Date.now(), result: false });
+      _apiResolutionCache.set(cacheKey, { ts: Date.now(), result: false });
       return false;
     }
 
-    // Fallback: check if price is decisively resolved
-    const price = parseFloat(ourToken.price || "0.5");
-    if (price >= 0.95) {
-      _apiResolutionCache.set(conditionId, { ts: Date.now(), result: true });
-      return true;
-    }
-    if (price <= 0.05) {
-      _apiResolutionCache.set(conditionId, { ts: Date.now(), result: false });
-      return false;
-    }
-
-    // Not yet resolved
-    _apiResolutionCache.set(conditionId, { ts: Date.now(), result: null });
+    // Winner field not set yet — market not officially resolved.
+    // Return null so other methods (Book, Binance) can handle it.
+    _apiResolutionCache.set(cacheKey, { ts: Date.now(), result: null });
     return null;
   } catch (e: any) {
     logger.debug("positions", `CLOB API resolution check failed for ${conditionId}: ${e.message}`);
