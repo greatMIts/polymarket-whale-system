@@ -8,6 +8,7 @@ import { CONFIG, getRuntime } from "./config";
 import { logger } from "./logger";
 import * as polyBook from "./polymarket-book";
 import * as risk from "./risk";
+import * as clobClient from "./clob-client";
 import * as https from "https";
 
 // ─── Module State ────────────────────────────────────────────────────────────
@@ -157,7 +158,9 @@ export async function executeCopy(
   return trade;
 }
 
-// ─── Live Order Execution (placeholder) ─────────────────────────────────────
+// ─── Live Order Execution ───────────────────────────────────────────────────
+// Places a real FOK market order via Polymarket's CLOB SDK.
+// Always BUY — we copy the whale's position on the same outcome token.
 
 async function executeLiveOrder(
   tokenId: string,
@@ -165,15 +168,40 @@ async function executeLiveOrder(
   sizeUsd: number,
   limitPrice: number
 ): Promise<string | undefined> {
-  // NOTE: Live trading requires py-clob-client equivalent in Node.js
-  // or direct HTTP signing with Polymarket's EIP-712 order format.
-  // For now, this is a placeholder that will be wired up for live mode.
+  const client = clobClient.getClient();
+  const startMs = Date.now();
 
-  logger.warn("copy-executor", "LIVE ORDER EXECUTION NOT YET IMPLEMENTED");
-  logger.warn("copy-executor", "Falling back to PAPER simulation");
+  // FOK market order: spend $sizeUsd buying tokens, limitPrice = worst acceptable price
+  const response = await client.createAndPostMarketOrder(
+    {
+      tokenID: tokenId,
+      amount: sizeUsd,
+      side: clobClient.Side.BUY,
+      price: limitPrice,
+    },
+    {
+      tickSize: "0.01",
+      negRisk: false,  // 2-outcome binary options
+    },
+    clobClient.OrderType.FOK,
+  );
 
-  // Return a simulated order ID
-  return `PAPER-${Date.now().toString(36)}`;
+  const latencyMs = Date.now() - startMs;
+
+  if (!response.success) {
+    throw new Error(`ORDER_REJECTED: ${response.errorMsg}`);
+  }
+
+  logger.event("copy-executor", "LIVE_ORDER_FILLED", {
+    orderId: response.orderID,
+    status: response.status,
+    side,
+    amount: sizeUsd,
+    price: limitPrice,
+    latencyMs,
+  });
+
+  return response.orderID;
 }
 
 // ─── CLOB Keep-Alive Ping ────────────────────────────────────────────────────

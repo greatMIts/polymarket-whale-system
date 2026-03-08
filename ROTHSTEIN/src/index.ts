@@ -13,6 +13,7 @@ import * as whaleMonitor from "./whale-monitor";
 import * as positions from "./positions";
 import * as copyPipeline from "./copy-pipeline";
 import * as copyExecutor from "./copy-executor";
+import * as clobClient from "./clob-client";
 import * as server from "./server";
 import { loadDecisionsFromDisk } from "./decisions-log";
 
@@ -25,8 +26,8 @@ async function boot(): Promise<void> {
   // Step 2: Mode check
   logger.info("boot", `Mode: ${CONFIG.mode}`);
   if (CONFIG.mode === "LIVE") {
-    if (!CONFIG.polyApiKey || !CONFIG.polyPrivateKey) {
-      logger.error("boot", "LIVE mode requires POLY_API_KEY and POLY_PRIVATE_KEY");
+    if (!CONFIG.polyPrivateKey || !CONFIG.polyWalletAddress) {
+      logger.error("boot", "LIVE mode requires POLY_PRIVATE_KEY and POLY_WALLET_ADDRESS");
       process.exit(1);
     }
     logger.warn("boot", "⚠️  LIVE MODE — Real money on the line");
@@ -72,11 +73,15 @@ async function boot(): Promise<void> {
   logger.info("boot", "Step 11/12: Starting periodic tasks...");
   startPeriodicTasks();
 
-  // Step 12: Start HTTP server + dashboard
-  logger.info("boot", "Step 12/12: Starting server...");
+  // Step 12: Initialize CLOB trading client (LIVE mode only)
+  logger.info("boot", "Step 12/13: Initializing CLOB client...");
+  await clobClient.initClobClient();
+
+  // Step 13: Start HTTP server + dashboard
+  logger.info("boot", "Step 13/13: Starting server...");
   server.start();
 
-  // Step 13: Start copy pipeline + CLOB keep-alive
+  // Start copy pipeline + CLOB keep-alive
   logger.info("boot", "Starting whale copy pipeline...");
   copyPipeline.start();
   copyExecutor.startClobPing();
