@@ -414,6 +414,11 @@
           <input type="number" class="config-input" id="cfgMinEdge" value="0.05" min="0" max="0.5" step="0.01" onchange="saveSettings()">
         </div>
         <div class="config-row">
+          <label>Min Mid Edge:</label>
+          <input type="number" class="config-input" id="cfgMinMidEdge" value="-1" min="-1" max="0.5" step="0.01" onchange="saveSettings()">
+          <span style="font-size:9px;color:var(--dim)">-1=off</span>
+        </div>
+        <div class="config-row">
           <label>Min Price:</label>
           <input type="number" class="config-input" id="cfgMinPrice" value="0.45" min="0.01" max="0.99" step="0.01" onchange="saveSettings()">
         </div>
@@ -560,28 +565,52 @@
     </div>
   </div>
 
-  <!-- STRATEGY OVERVIEW -->
+  <!-- STRATEGY & SIZING -->
   <div class="card">
-    <div class="card-title">Strategy <span id="stratBadge" style="font-size:9px;padding:2px 6px;border-radius:3px;background:rgba(0,230,118,0.15);color:var(--green);font-weight:400;letter-spacing:0">ACTIVE</span></div>
+    <div class="card-title">Strategy & Sizing <span id="stratBadge" style="font-size:9px;padding:2px 6px;border-radius:3px;background:rgba(0,230,118,0.15);color:var(--green);font-weight:400;letter-spacing:0">ACTIVE</span></div>
     <div class="card-body" style="font-size:12px;">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-        <span style="color:var(--gold);font-weight:700;font-size:14px;letter-spacing:1px;">WHALE COPIER v5</span>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <span style="color:var(--gold);font-weight:700;font-size:13px;letter-spacing:1px;">WHALE COPIER v5</span>
+        <span id="stratSignals" style="color:var(--cyan);font-size:10px">—</span>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;">
-        <div style="color:var(--dim)">Wallets Tracked</div>
-        <div id="stratWallets" style="text-align:right">—</div>
-        <div style="color:var(--dim)">Poll Rate</div>
-        <div id="stratPollRate" style="text-align:right">—</div>
-        <div style="color:var(--dim)">Min Copy Score</div>
+
+      <!-- Sizing Tiers (editable) -->
+      <div style="margin-bottom:8px">
+        <div style="font-size:10px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;padding-bottom:3px;border-bottom:1px solid var(--border)">Score-Based Bet Sizing</div>
+        <div style="display:grid;grid-template-columns:auto 60px 20px 60px;gap:4px 6px;align-items:center;">
+          <div style="color:var(--green);font-size:10px;font-weight:700">T1</div>
+          <input type="number" class="config-input" id="cfgT1Score" value="80" min="50" max="100" step="1" style="width:55px;font-size:11px;padding:2px 4px" onchange="saveSettings()">
+          <span style="color:var(--dim);font-size:10px">→</span>
+          <div style="display:flex;align-items:center;gap:2px"><span style="color:var(--dim);font-size:10px">$</span><input type="number" class="config-input" id="cfgT1Size" value="15" min="1" max="100" step="1" style="width:45px;font-size:11px;padding:2px 4px" onchange="saveSettings()"></div>
+
+          <div style="color:var(--gold);font-size:10px;font-weight:700">T2</div>
+          <input type="number" class="config-input" id="cfgT2Score" value="70" min="40" max="100" step="1" style="width:55px;font-size:11px;padding:2px 4px" onchange="saveSettings()">
+          <span style="color:var(--dim);font-size:10px">→</span>
+          <div style="display:flex;align-items:center;gap:2px"><span style="color:var(--dim);font-size:10px">$</span><input type="number" class="config-input" id="cfgT2Size" value="10" min="1" max="100" step="1" style="width:45px;font-size:11px;padding:2px 4px" onchange="saveSettings()"></div>
+
+          <div style="color:var(--orange);font-size:10px;font-weight:700">T3</div>
+          <input type="number" class="config-input" id="cfgT3Score" value="60" min="30" max="100" step="1" style="width:55px;font-size:11px;padding:2px 4px" onchange="saveSettings()">
+          <span style="color:var(--dim);font-size:10px">→</span>
+          <div style="display:flex;align-items:center;gap:2px"><span style="color:var(--dim);font-size:10px">$</span><input type="number" class="config-input" id="cfgT3Size" value="5" min="1" max="100" step="1" style="width:45px;font-size:11px;padding:2px 4px" onchange="saveSettings()"></div>
+
+          <div style="color:var(--dim);font-size:10px;font-weight:700">T4</div>
+          <input type="number" class="config-input" id="cfgT4Score" value="50" min="0" max="100" step="1" style="width:55px;font-size:11px;padding:2px 4px" onchange="saveSettings()">
+          <span style="color:var(--dim);font-size:10px">→</span>
+          <div style="display:flex;align-items:center;gap:2px"><span style="color:var(--dim);font-size:10px">$</span><input type="number" class="config-input" id="cfgT4Size" value="2" min="1" max="100" step="1" style="width:45px;font-size:11px;padding:2px 4px" onchange="saveSettings()"></div>
+        </div>
+        <div style="font-size:9px;color:var(--dim);margin-top:4px">Score ≥ threshold → bet size. Highest match wins.</div>
+      </div>
+
+      <!-- Key params -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;">
+        <div style="color:var(--dim)">Min Score</div>
         <div id="stratMinScore" style="text-align:right;color:var(--gold)">—</div>
-        <div style="color:var(--dim)">Bet Size</div>
-        <div id="stratBetSize" style="text-align:right">—</div>
+        <div style="color:var(--dim)">Wallets</div>
+        <div id="stratWallets" style="text-align:right">—</div>
         <div style="color:var(--dim)">Max Positions</div>
         <div id="stratMaxPos" style="text-align:right">—</div>
-        <div style="color:var(--dim)">Max Risk ($)</div>
+        <div style="color:var(--dim)">Max Risk</div>
         <div id="stratMaxRisk" style="text-align:right">—</div>
-        <div style="color:var(--dim)">Active Signals</div>
-        <div id="stratSignals" style="text-align:right;color:var(--cyan)">—</div>
         <div style="color:var(--dim)">Last Signal</div>
         <div id="stratLastSignal" style="text-align:right">—</div>
       </div>
@@ -652,7 +681,7 @@
     <div class="card-title">Closed Positions (Recent)</div>
     <div class="card-body scroll-box" style="max-height:250px;">
       <table class="tbl" id="closedTable">
-        <thead><tr><th>Time</th><th>Contract</th><th>Asset</th><th>Side</th><th>Entry</th><th>Exit</th><th>PnL</th><th>Score</th><th>Status</th><th>Duration</th></tr></thead>
+        <thead><tr><th>Time</th><th>Contract</th><th>Asset</th><th>Side</th><th>USDC</th><th>Entry</th><th>Exit</th><th>PnL</th><th>Score</th><th>Status</th><th>Duration</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -730,6 +759,7 @@ function syncConfigInputs(cfg) {
     }
   };
   safeSet('cfgMinEdge', cfg.minEdgeVsSpot);
+  safeSet('cfgMinMidEdge', cfg.minMidEdge);
   safeSet('cfgMinPrice', cfg.minPrice);
   safeSet('cfgMaxPrice', cfg.maxPrice);
   safeSet('cfgMaxSpread', cfg.maxBookSpread);
@@ -742,6 +772,15 @@ function syncConfigInputs(cfg) {
   safeSet('cfgMaxRisk', cfg.maxTotalAtRisk);
   safeSet('cfgTpMinPrice', cfg.conditionalTpMinPrice);
   safeSet('cfgTpEdge', cfg.conditionalTpEdgeThreshold);
+  // Sizing tiers
+  safeSet('cfgT1Score', cfg.sizingTier1Score);
+  safeSet('cfgT1Size', cfg.sizingTier1Size);
+  safeSet('cfgT2Score', cfg.sizingTier2Score);
+  safeSet('cfgT2Size', cfg.sizingTier2Size);
+  safeSet('cfgT3Score', cfg.sizingTier3Score);
+  safeSet('cfgT3Size', cfg.sizingTier3Size);
+  safeSet('cfgT4Score', cfg.sizingTier4Score);
+  safeSet('cfgT4Size', cfg.sizingTier4Size);
 }
 
 let saveTimeout = null;
@@ -750,6 +789,7 @@ function saveSettings() {
   saveTimeout = setTimeout(() => {
     const body = {
       minEdgeVsSpot: parseFloat(document.getElementById('cfgMinEdge').value),
+      minMidEdge: parseFloat(document.getElementById('cfgMinMidEdge').value),
       minPrice: parseFloat(document.getElementById('cfgMinPrice').value),
       maxPrice: parseFloat(document.getElementById('cfgMaxPrice').value),
       maxBookSpread: parseFloat(document.getElementById('cfgMaxSpread').value),
@@ -762,6 +802,14 @@ function saveSettings() {
       maxTotalAtRisk: parseFloat(document.getElementById('cfgMaxRisk').value),
       conditionalTpMinPrice: parseFloat(document.getElementById('cfgTpMinPrice').value),
       conditionalTpEdgeThreshold: parseFloat(document.getElementById('cfgTpEdge').value),
+      sizingTier1Score: parseInt(document.getElementById('cfgT1Score').value),
+      sizingTier1Size: parseInt(document.getElementById('cfgT1Size').value),
+      sizingTier2Score: parseInt(document.getElementById('cfgT2Score').value),
+      sizingTier2Size: parseInt(document.getElementById('cfgT2Size').value),
+      sizingTier3Score: parseInt(document.getElementById('cfgT3Score').value),
+      sizingTier3Size: parseInt(document.getElementById('cfgT3Size').value),
+      sizingTier4Score: parseInt(document.getElementById('cfgT4Score').value),
+      sizingTier4Size: parseInt(document.getElementById('cfgT4Size').value),
     };
     fetch('/api/config', {
       method: 'POST',
@@ -901,14 +949,12 @@ function updateDashboard(s) {
   const cfg = s.runtimeConfig || {};
   const wp = s.subsystemHealth?.whalePoller || {};
   document.getElementById('stratWallets').textContent = wp.walletsPolled !== undefined ? (wp.walletsPolled + ' active') : '—';
-  document.getElementById('stratPollRate').textContent = '5s';
   document.getElementById('stratMinScore').textContent = cfg.minTradeScore || '55';
-  document.getElementById('stratBetSize').textContent = cfg.betSizeUsdc ? ('$' + cfg.betSizeUsdc) : '—';
   document.getElementById('stratMaxPos').textContent = cfg.maxConcurrentPositions || '—';
   document.getElementById('stratMaxRisk').textContent = cfg.maxTotalAtRisk ? ('$' + cfg.maxTotalAtRisk) : '—';
 
   const whaleAct = s.whaleActivity || [];
-  document.getElementById('stratSignals').textContent = whaleAct.length;
+  document.getElementById('stratSignals').textContent = whaleAct.length + ' signals';
   if (whaleAct.length > 0) {
     document.getElementById('stratLastSignal').textContent = timeAgo(whaleAct[0].ts);
   } else {
@@ -1094,7 +1140,7 @@ function renderClosed(positions) {
     const statusColor = p.status === 'RESOLVED_WIN' ? 'var(--green)' : p.status === 'EXITED_TP' ? 'var(--cyan)' : 'var(--red)';
     const dur = p.closedAt && p.openedAt ? Math.round((p.closedAt - p.openedAt) / 1000) : '—';
     const period = fmtContract(t.title, t.endTs, null, null);
-    tr.innerHTML = `<td>${fmtTime(p.closedAt||p.openedAt)}</td><td style="color:var(--cyan);font-size:10px">${period}</td><td style="color:var(--gold)">${t.asset}</td><td>${t.side}</td><td>${t.entryPrice.toFixed(3)}</td><td>${(p.exitPrice||0).toFixed(3)}</td><td style="color:${pnlColor};font-weight:700">${(p.pnl||0)>=0?'+':''}$${(p.pnl||0).toFixed(4)}</td><td style="color:${scoreColor(t.score)}">${t.score}</td><td style="color:${statusColor}">${p.status}</td><td>${dur}s</td>`;
+    tr.innerHTML = `<td>${fmtTime(p.closedAt||p.openedAt)}</td><td style="color:var(--cyan);font-size:10px">${period}</td><td style="color:var(--gold)">${t.asset}</td><td>${t.side}</td><td>$${t.sizeUsd||'—'}</td><td>${t.entryPrice.toFixed(3)}</td><td>${(p.exitPrice||0).toFixed(3)}</td><td style="color:${pnlColor};font-weight:700">${(p.pnl||0)>=0?'+':''}$${(p.pnl||0).toFixed(4)}</td><td style="color:${scoreColor(t.score)}">${t.score}</td><td style="color:${statusColor}">${p.status}</td><td>${dur}s</td>`;
     tbody.appendChild(tr);
   }
 }

@@ -138,7 +138,20 @@ const DEFAULT_RUNTIME: RuntimeConfig = {
   maxTotalAtRisk: CONFIG.maxTotalAtRisk,
 
   // Sizing
-  betSizeUsdc: 10,                  // fixed USDC per trade
+  betSizeUsdc: 10,                  // fixed USDC per trade (legacy, overridden by tiers)
+
+  // MidEdge gate
+  minMidEdge: -1,                   // disabled by default
+
+  // Sizing tiers (score-based)
+  sizingTier1Score: 80,
+  sizingTier1Size: 15,
+  sizingTier2Score: 70,
+  sizingTier2Size: 10,
+  sizingTier3Score: 60,
+  sizingTier3Size: 5,
+  sizingTier4Score: 50,
+  sizingTier4Size: 2,
 
   // Conditional TP
   conditionalTpMinPrice: CONFIG.conditionalTpMinPrice,

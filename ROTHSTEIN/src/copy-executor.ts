@@ -37,9 +37,16 @@ export function computeSize(score: ScoringResult): number {
   const effectiveMultiplier = risk.getEffectiveSizingMultiplier();
   const runtime = getRuntime();
 
-  // Find matching tier
-  let baseSizeUsd = 5; // default minimum
-  for (const tier of CONFIG.sizingTiers) {
+  // Use runtime-configurable tiers (managed from dashboard Strategy box)
+  const tiers = [
+    { minScore: runtime.sizingTier1Score, size: runtime.sizingTier1Size },
+    { minScore: runtime.sizingTier2Score, size: runtime.sizingTier2Size },
+    { minScore: runtime.sizingTier3Score, size: runtime.sizingTier3Size },
+    { minScore: runtime.sizingTier4Score, size: runtime.sizingTier4Size },
+  ].sort((a, b) => b.minScore - a.minScore);  // highest first
+
+  let baseSizeUsd = tiers[tiers.length - 1].size; // default to lowest tier
+  for (const tier of tiers) {
     if (score.totalScore >= tier.minScore) {
       baseSizeUsd = tier.size;
       break;

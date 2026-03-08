@@ -274,6 +274,19 @@ export interface RuntimeConfig {
   // Sizing
   betSizeUsdc: number;             // fixed USDC per trade (default 10)
 
+  // MidEdge gate
+  minMidEdge: number;                  // default -1 (disabled)
+
+  // Sizing tiers (score-based, managed from dashboard)
+  sizingTier1Score: number;   // default 80, size = sizingTier1Size
+  sizingTier1Size: number;    // default 15
+  sizingTier2Score: number;   // default 70, size = sizingTier2Size
+  sizingTier2Size: number;    // default 10
+  sizingTier3Score: number;   // default 60, size = sizingTier3Size
+  sizingTier3Size: number;    // default 5
+  sizingTier4Score: number;   // default 50, size = sizingTier4Size
+  sizingTier4Size: number;    // default 2
+
   // Conditional TP
   conditionalTpMinPrice: number;    // default 0.85
   conditionalTpEdgeThreshold: number;  // default 0

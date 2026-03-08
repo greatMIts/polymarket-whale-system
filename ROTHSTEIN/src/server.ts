@@ -237,6 +237,19 @@ export function start(): void {
       // Sizing
       if (b.betSizeUsdc !== undefined) updates.betSizeUsdc = Math.max(1, Math.min(1000, Number(b.betSizeUsdc)));
 
+      // MidEdge gate
+      if (b.minMidEdge !== undefined) updates.minMidEdge = Math.max(-1, Math.min(0.5, Number(b.minMidEdge)));
+
+      // Sizing tiers
+      if (b.sizingTier1Score !== undefined) updates.sizingTier1Score = Math.max(50, Math.min(100, Number(b.sizingTier1Score)));
+      if (b.sizingTier1Size !== undefined) updates.sizingTier1Size = Math.max(1, Math.min(100, Number(b.sizingTier1Size)));
+      if (b.sizingTier2Score !== undefined) updates.sizingTier2Score = Math.max(40, Math.min(100, Number(b.sizingTier2Score)));
+      if (b.sizingTier2Size !== undefined) updates.sizingTier2Size = Math.max(1, Math.min(100, Number(b.sizingTier2Size)));
+      if (b.sizingTier3Score !== undefined) updates.sizingTier3Score = Math.max(30, Math.min(100, Number(b.sizingTier3Score)));
+      if (b.sizingTier3Size !== undefined) updates.sizingTier3Size = Math.max(1, Math.min(100, Number(b.sizingTier3Size)));
+      if (b.sizingTier4Score !== undefined) updates.sizingTier4Score = Math.max(0, Math.min(100, Number(b.sizingTier4Score)));
+      if (b.sizingTier4Size !== undefined) updates.sizingTier4Size = Math.max(1, Math.min(100, Number(b.sizingTier4Size)));
+
       // Conditional TP
       if (b.conditionalTpMinPrice !== undefined) updates.conditionalTpMinPrice = Math.max(0.5, Math.min(0.99, Number(b.conditionalTpMinPrice)));
       if (b.conditionalTpEdgeThreshold !== undefined) updates.conditionalTpEdgeThreshold = Math.max(-0.5, Math.min(0.5, Number(b.conditionalTpEdgeThreshold)));

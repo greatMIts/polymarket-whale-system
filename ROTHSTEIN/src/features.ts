@@ -134,6 +134,11 @@ export function buildFeatureVector(
     return null;
   }
 
+  // Hard gate: minimum mid-edge (uses runtime config, -1 = disabled)
+  if (runtime.minMidEdge > -1 && midEdge < runtime.minMidEdge) {
+    return null;
+  }
+
   // 9. Momentum alignment: does Binance direction agree with our bet?
   const momentumAligned = (side === "Up" && priceDirection === "UP") ||
                           (side === "Down" && priceDirection === "DOWN");
