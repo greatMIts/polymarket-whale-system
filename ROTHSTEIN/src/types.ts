@@ -234,6 +234,7 @@ export interface DecisionLogEntry {
   components: ScoreComponents;
   features: FeatureVector;
   action: "SKIP" | "TRADE";
+  skipReason?: string;              // Why signal was skipped (only when action=SKIP)
   sizeUsd: number;
   entryPrice: number;
   secsRemaining: number;

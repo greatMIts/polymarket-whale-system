@@ -116,20 +116,14 @@ export async function checkResolutions(): Promise<void> {
 
     const ageSinceExpiry = Math.round((now - (contract.endTs || (contract.ts + 300_000))) / 1000);
 
-    // ─── Method 1 (PRIMARY): Binance spot price vs strike ──────────────
-    // For 5-min binary options, this is the most reliable resolution.
-    // If BTC/ETH is above strike → "Up" wins. Below → "Down" wins.
-    const spotPrice = binance.getPrice(contract.asset);
-    if (spotPrice && contract.strikePrice > 0) {
-      const spotAboveStrike = spotPrice > contract.strikePrice;
-      const won = (contract.side === "Up" && spotAboveStrike) ||
-                  (contract.side === "Down" && !spotAboveStrike);
-
+    // ─── Method 1 (PRIMARY): CLOB API — official Polymarket resolution ──
+    // Most accurate: uses Polymarket's own winner field / settlement price.
+    const apiResult = await fetchResolutionFromApi(contract.conditionId, contract.side);
+    if (apiResult !== null) {
       logger.debug("positions",
-        `Binance resolution: ${id} ${contract.asset} ${contract.side} strike=${contract.strikePrice.toFixed(2)} spot=${spotPrice.toFixed(2)} → ${won ? "WIN" : "LOSS"} (expired ${ageSinceExpiry}s ago)`
+        `CLOB API resolution: ${id} ${contract.asset} ${contract.side} → ${apiResult ? "WIN" : "LOSS"} (expired ${ageSinceExpiry}s ago)`
       );
-
-      resolvePosition(id, won ? "RESOLVED_WIN" : "RESOLVED_LOSS", won, won ? 1.0 : 0.0);
+      resolvePosition(id, apiResult ? "RESOLVED_WIN" : "RESOLVED_LOSS", apiResult, apiResult ? 1.0 : 0.0);
       continue;
     }
 
@@ -145,10 +139,20 @@ export async function checkResolutions(): Promise<void> {
       }
     }
 
-    // ─── Method 3: CLOB API fallback ───────────────────────────────────
-    const apiResult = await fetchResolutionFromApi(contract.conditionId, contract.side);
-    if (apiResult !== null) {
-      resolvePosition(id, apiResult ? "RESOLVED_WIN" : "RESOLVED_LOSS", apiResult, apiResult ? 1.0 : 0.0);
+    // ─── Method 3 (FALLBACK): Binance spot price vs strike ──────────────
+    // Less accurate for tight margins — Binance price at check time may
+    // differ from actual settlement price by a few cents.
+    const spotPrice = binance.getPrice(contract.asset);
+    if (spotPrice && contract.strikePrice > 0 && ageSinceExpiry > 15) {
+      const spotAboveStrike = spotPrice > contract.strikePrice;
+      const won = (contract.side === "Up" && spotAboveStrike) ||
+                  (contract.side === "Down" && !spotAboveStrike);
+
+      logger.debug("positions",
+        `Binance fallback resolution: ${id} ${contract.asset} ${contract.side} strike=${contract.strikePrice.toFixed(2)} spot=${spotPrice.toFixed(2)} → ${won ? "WIN" : "LOSS"} (expired ${ageSinceExpiry}s ago)`
+      );
+
+      resolvePosition(id, won ? "RESOLVED_WIN" : "RESOLVED_LOSS", won, won ? 1.0 : 0.0);
       continue;
     }
 

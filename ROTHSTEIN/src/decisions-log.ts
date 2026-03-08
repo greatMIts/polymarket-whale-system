@@ -22,7 +22,8 @@ export function logDecision(
   scoring: ScoringResult,
   action: "SKIP" | "TRADE",
   sizeUsd: number,
-  whaleSignal?: WhaleSignal
+  whaleSignal?: WhaleSignal,
+  skipReason?: string
 ): DecisionLogEntry {
   const now = Date.now();
   const entry: DecisionLogEntry = {
@@ -35,6 +36,7 @@ export function logDecision(
     components: scoring.components,
     features,
     action,
+    skipReason: action === "SKIP" ? skipReason : undefined,
     sizeUsd,
     entryPrice: features.entryPrice,
     secsRemaining: features.secsRemaining,
