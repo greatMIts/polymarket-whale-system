@@ -82,10 +82,15 @@ export async function executeCopy(
 
   // 3. Price staleness check — LIVE mode only
   // In paper mode we simulate fills at the whale's entry price, so staleness is irrelevant.
-  // In live mode, reject if market moved > 6 cents since whale's entry (accounts for latency).
+  // In live mode, reject ONLY if ask is MORE than 6 cents ABOVE whale's entry (we'd overpay).
+  // If ask is LOWER than whale's price, that's a BETTER deal — always enter.
   if (isLive) {
-    if (Math.abs(currentAsk - signal.price) > 0.06) {
-      throw new Error(`PRICE_STALE: ask=${currentAsk.toFixed(4)} whale=${signal.price.toFixed(4)} diff=${Math.abs(currentAsk - signal.price).toFixed(4)}`);
+    const askDelta = currentAsk - signal.price;  // positive = ask higher than whale, negative = better price
+    if (askDelta > 0.06) {
+      throw new Error(`PRICE_STALE: ask=${currentAsk.toFixed(4)} whale=${signal.price.toFixed(4)} diff=+${askDelta.toFixed(4)} (ask too high)`);
+    }
+    if (askDelta < 0) {
+      logger.info("copy-executor", `Better price: ask=${currentAsk.toFixed(4)} < whale=${signal.price.toFixed(4)} (${Math.abs(askDelta).toFixed(4)} cheaper)`);
     }
   }
 
@@ -188,8 +193,13 @@ async function executeLiveOrder(
 
   const latencyMs = Date.now() - startMs;
 
-  if (!response.success) {
-    throw new Error(`ORDER_REJECTED: ${response.errorMsg}`);
+  // Log full response for debugging (CLOB SDK has inconsistent error shapes)
+  logger.debug("copy-executor", `CLOB response (${latencyMs}ms): ${JSON.stringify(response)}`);
+
+  if (!response || !response.success) {
+    // SDK error responses may use `errorMsg`, `error`, or be shaped differently
+    const errMsg = response?.errorMsg || response?.error || response?.status || JSON.stringify(response);
+    throw new Error(`ORDER_REJECTED: ${errMsg}`);
   }
 
   logger.event("copy-executor", "LIVE_ORDER_FILLED", {

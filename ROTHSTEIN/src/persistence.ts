@@ -112,6 +112,28 @@ export function initLineCounters(): void {
   }
 }
 
+// ─── Manual Archive (rotate decisions + positions to start fresh) ────────────
+
+export function archiveDataFiles(): { archived: string[] } {
+  const files = [CONFIG.decisionsFile, CONFIG.positionsFile];
+  const archived: string[] = [];
+
+  for (const filename of files) {
+    const filePath = path.resolve(CONFIG.dataDir, filename);
+    if (fs.existsSync(filePath)) {
+      const stat = fs.statSync(filePath);
+      if (stat.size > 0) {
+        rotateFile(filename);
+        lineCounters.set(filename, 0);
+        archived.push(filename);
+      }
+    }
+  }
+
+  logger.info("persistence", `Manual archive: ${archived.length} files rotated`);
+  return { archived };
+}
+
 // ─── CSV Export ─────────────────────────────────────────────────────────────
 
 export function exportCsv(data: Record<string, any>[], filename: string): string {

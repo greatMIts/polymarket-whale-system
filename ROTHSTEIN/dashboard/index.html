@@ -511,14 +511,23 @@
     <div class="card">
       <div class="card-title">Controls & Export</div>
       <div class="card-body">
+        <div class="section-label">Mode</div>
+        <div class="controls" style="margin-bottom:12px;">
+          <button class="btn" id="btnModeLive" onclick="switchMode('LIVE')" style="font-size:11px;padding:6px 14px;">LIVE</button>
+          <button class="btn" id="btnModePaper" onclick="switchMode('PAPER')" style="font-size:11px;padding:6px 14px;">PAPER</button>
+        </div>
         <div class="section-label">Trading Controls</div>
-        <div class="controls" style="margin-bottom:16px;">
+        <div class="controls" style="margin-bottom:12px;">
           <button class="btn" id="btnPause" onclick="togglePause()">⏸ Pause</button>
           <button class="btn btn-danger" onclick="resetSession()">↻ Reset Session</button>
         </div>
-        <div class="section-label">Data Export</div>
+        <div class="section-label">Data</div>
         <button class="export-btn" onclick="exportDecisions()">📊 Export Decisions (CSV)</button>
         <button class="export-btn" onclick="exportTrades()">📈 Export Trades (CSV)</button>
+        <button class="export-btn" onclick="archiveData()" style="margin-top:8px;border-color:var(--orange);color:var(--orange);">🗄 Archive & Start Fresh</button>
+        <div style="font-size:9px;color:var(--dim);margin-top:4px;line-height:1.4">
+          Rotates decisions + trades files to archives.<br>Resets session stats. Clean slate.
+        </div>
       </div>
     </div>
 
@@ -871,6 +880,29 @@ function exportTrades() {
   const url = '/api/export/trades' + (token ? '?token=' + token : '');
   window.open(url, '_blank');
 }
+function archiveData() {
+  if (confirm('Archive current decisions & trades files and start fresh?\nSession stats will be reset.')) {
+    fetch('/api/archive', { method: 'POST', headers: authHeaders() })
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok) alert('Archived ' + (d.archived?.length || 0) + ' file(s). Clean start!');
+        else alert('Archive failed: ' + (d.error || 'unknown'));
+      });
+  }
+}
+function switchMode(mode) {
+  const msg = mode === 'LIVE'
+    ? 'Switch to LIVE mode? Real orders will be placed.'
+    : 'Switch to PAPER mode? Simulated trades only.';
+  if (confirm(msg)) {
+    fetch('/api/mode', {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({ mode })
+    }).then(r => r.json()).then(d => {
+      if (!d.ok) alert('Mode switch failed: ' + (d.error || 'unknown'));
+    });
+  }
+}
 
 // ─── Dashboard Update ───────────────────────────────────────────────────────
 function updateDashboard(s) {
@@ -878,6 +910,19 @@ function updateDashboard(s) {
   const mb = document.getElementById('modeBadge');
   mb.textContent = s.mode;
   mb.className = 'mode-badge ' + (s.mode === 'LIVE' ? 'mode-live' : 'mode-paper');
+
+  // Mode switch buttons
+  const btnLive = document.getElementById('btnModeLive');
+  const btnPaper = document.getElementById('btnModePaper');
+  if (btnLive && btnPaper) {
+    if (s.mode === 'LIVE') {
+      btnLive.className = 'btn btn-success'; btnLive.style.opacity = '1';
+      btnPaper.className = 'btn'; btnPaper.style.opacity = '0.5';
+    } else {
+      btnPaper.className = 'btn btn-success'; btnPaper.style.opacity = '1';
+      btnLive.className = 'btn'; btnLive.style.opacity = '0.5';
+    }
+  }
 
   // Uptime
   const secs = Math.floor(s.uptime / 1000);

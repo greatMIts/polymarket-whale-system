@@ -19,7 +19,7 @@ import * as risk from "./risk";
 import * as copyPipeline from "./copy-pipeline";
 import { getRecentDecisions } from "./decisions-log";
 import * as fs from "fs";
-import { readJsonl } from "./persistence";
+import { readJsonl, archiveDataFiles } from "./persistence";
 
 // ─── State ──────────────────────────────────────────────────────────────────
 
@@ -281,6 +281,37 @@ export function start(): void {
     const cleared = positions.clearClosed();
     risk.resetSession();
     res.json({ ok: true, cleared });
+  });
+
+  // Archive: rotate decisions + positions files to start fresh
+  app.post("/api/archive", (_req, res) => {
+    try {
+      const result = archiveDataFiles();
+      // Also clear in-memory state for a clean start
+      positions.clearClosed();
+      risk.resetSession();
+      logger.event("server", "MANUAL_ARCHIVE", result);
+      res.json({ ok: true, ...result });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // Mode switch: toggle between LIVE and PAPER
+  app.post("/api/mode", (req, res) => {
+    try {
+      const newMode = req.body.mode;
+      if (newMode !== "LIVE" && newMode !== "PAPER") {
+        res.status(400).json({ ok: false, error: "Mode must be LIVE or PAPER" });
+        return;
+      }
+      // Update the CONFIG mode (cast away readonly for runtime switch)
+      (CONFIG as any).mode = newMode;
+      logger.event("server", "MODE_SWITCHED", { mode: newMode });
+      res.json({ ok: true, mode: newMode });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
   });
 
   // ─── Data Export Endpoints ────────────────────────────────────────────
