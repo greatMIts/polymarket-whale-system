@@ -35,7 +35,10 @@ import * as server from "./server";
 let pendingExecutions = 0;  // in-flight orders (execution mutex)
 let started = false;
 
-// Pipeline-level dedup REMOVED — whale-monitor txHash dedup handles true duplicates
+// In-flight lock: prevents concurrent execution on the same conditionId:side.
+// Unlike the removed 5-min pipeline dedup, this only blocks SIMULTANEOUS races —
+// once a position is opened, hasPosition() handles subsequent signals normally.
+const inFlightLock = new Set<string>();
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
@@ -136,10 +139,11 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
       return;
     }
 
-    // 6c. Duplicate position guard (Bug #4 v3)
-    if (positions.hasPosition(signal.conditionId, signal.side)) {
+    // 6c. Duplicate position guard (Bug #4 v3) + in-flight race lock
+    const lockKey = `${signal.conditionId}:${signal.side}`;
+    if (positions.hasPosition(signal.conditionId, signal.side) || inFlightLock.has(lockKey)) {
       decisionsLog.logDecision(contract, signal.side, features, score, "SKIP", 0, signal);
-      logger.debug("pipeline", `Already positioned on ${signal.conditionId.slice(0, 8)} ${signal.side}`);
+      logger.debug("pipeline", `Already positioned/in-flight on ${signal.conditionId.slice(0, 8)} ${signal.side}`);
       return;
     }
 
@@ -157,6 +161,8 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
 
     // ─── Step 7: Execute ──────────────────────────────────────────────────
 
+    // Acquire in-flight lock BEFORE async execution to prevent race condition
+    inFlightLock.add(lockKey);
     pendingExecutions++;
 
     try {
@@ -183,6 +189,8 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
       decisionsLog.logDecision(contract, signal.side, features, score, "SKIP", 0, signal);
     } finally {
       pendingExecutions--;
+      // Release lock — hasPosition() now guards against future duplicates
+      inFlightLock.delete(lockKey);
     }
 
   } catch (e: any) {
