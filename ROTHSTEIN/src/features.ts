@@ -156,8 +156,8 @@ export function buildFeatureVector(
   const whaleMaxSize = concurrentWhales > 0
     ? Math.max(...sameDirection.map(w => w.usdcSize))
     : 0;
-  const whaleAgreement = whaleActivity.length > 0 &&
-    whaleActivity.every(w => w.side === side);
+  const opposingWhales = whaleActivity.filter(w => w.side !== side);
+  const whaleAgreement = concurrentWhales > 0 && opposingWhales.length === 0;
 
   // ─── Assemble ──────────────────────────────────────────────────────────────
 
