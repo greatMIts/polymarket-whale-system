@@ -59,7 +59,8 @@ function logGateSummary(): void {
 export function buildFeatureVector(
   contract: ContractInfo,
   side: Side,
-  tokenId: string
+  tokenId: string,
+  whalePrice?: number
 ): FeatureVector | null {
   gateStats.total++;
   logGateSummary();
@@ -86,10 +87,9 @@ export function buildFeatureVector(
     return null;
   }
 
-  // 4. Entry price: we're BUYING, so use the ask (Up) or inverse (Down)
-  //    For "Up" token: our entry price = best ask
-  //    For "Down" token: our entry price = best ask on the down token
-  const entryPrice = book.ask;
+  // 4. Entry price: use whale's actual price when available (book ask is stale after whale sweep)
+  //    Fallback to book.ask for paper mode / when no whale price provided
+  const entryPrice = (whalePrice && whalePrice > 0) ? whalePrice : book.ask;
   if (entryPrice <= 0 || entryPrice >= 1) { gateStats.badEntry++; return null; }
 
   // Hard gates: price range & spread (uses runtime config for hot-reload)

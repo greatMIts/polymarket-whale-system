@@ -89,8 +89,6 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
       logger.debug("pipeline",
         `Rejected ${signal.walletLabel} ${signal.side} on ${signal.conditionId.slice(0, 8)}...: ${validation.rejectReason}`
       );
-      // Log to score feed so dashboard always shows activity
-      decisionsLog.logPreFilterReject(signal, contract || undefined, validation.rejectReason || "UNKNOWN");
       return;
     }
 
@@ -99,7 +97,7 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
 
     // ─── Step 3: Build features (~8ms, sync) ──────────────────────────────
 
-    const features = buildFeatureVector(contract, signal.side, tokenId);
+    const features = buildFeatureVector(contract, signal.side, tokenId, signal.price);
     if (!features) {
       logger.debug("pipeline",
         `No features for ${signal.walletLabel} ${signal.side} on ${contract.asset} ${contract.conditionId.slice(0, 8)}...`
