@@ -23,16 +23,8 @@ import * as pnl from "./pnl";
 import * as decisionsLog from "./decisions-log";
 import * as server from "./server";
 
-// ─── Zero stubs for early-rejection decision logging ─────────────────────────
-// Used when logging decisions BEFORE features/scoring are computed.
-// Makes all early rejections visible in the score feed and decisions CSV.
-
-const ZERO_FEATURES: FeatureVector = {
-  spotPrice: 0, delta30s: 0, delta5m: 0, vol1h: null, priceDirection: "FLAT",
-  polyMid: 0, bookSpread: 0, secsRemaining: 0, fairValue: 0,
-  edgeVsSpot: 0, midEdge: 0, entryPrice: 0, momentumAligned: false,
-  hourOfDay: 0, concurrentWhales: 0, bestWalletTier: 0, whaleMaxSize: 0, whaleAgreement: false,
-};
+// ─── Zero score stub for decision logging ────────────────────────────────────
+// Scoring is removed — all decisions use this stub for compatibility.
 
 const ZERO_SCORE: ScoringResult = {
   totalScore: 0,
@@ -40,6 +32,20 @@ const ZERO_SCORE: ScoringResult = {
   recommendation: "SKIP",
   suggestedSize: 0,
 };
+
+// Minimal features for validation-stage rejections (before buildFeatureVector is called).
+// Populated with signal data so at least entryPrice + secsRemaining are in the CSV.
+function buildMinimalFeatures(signal: WhaleSignal, contract?: ContractInfo): FeatureVector {
+  const secsRemaining = contract ? Math.max(0, (contract.endTs - Date.now()) / 1000) : 0;
+  return {
+    spotPrice: 0, delta30s: 0, delta5m: 0, vol1h: null, priceDirection: "FLAT",
+    polyMid: 0, bookSpread: 0, secsRemaining,
+    fairValue: 0, edgeVsSpot: 0, midEdge: 0,
+    entryPrice: signal.price,
+    momentumAligned: false, hourOfDay: new Date().getUTCHours(),
+    concurrentWhales: 0, bestWalletTier: 0, whaleMaxSize: 0, whaleAgreement: false,
+  };
+}
 
 // ─── Module State ────────────────────────────────────────────────────────────
 
@@ -98,9 +104,9 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
 
     const validation = validateWhaleSignal(signal, contract || undefined, book || undefined);
     if (!validation.pass) {
-      // Log rejection to decisions file (was previously silent — only debug log)
+      // Log rejection with minimal features (at least entryPrice + secsRemaining)
       if (contract) {
-        decisionsLog.logDecision(contract, signal.side, ZERO_FEATURES, ZERO_SCORE, "SKIP", signal.usdcSize, signal, validation.rejectReason);
+        decisionsLog.logDecision(contract, signal.side, buildMinimalFeatures(signal, contract), ZERO_SCORE, "SKIP", signal.usdcSize, signal, validation.rejectReason);
       }
       logger.debug("pipeline",
         `Rejected ${signal.walletLabel} ${signal.side} on ${signal.conditionId.slice(0, 8)}...: ${validation.rejectReason}`
@@ -112,17 +118,19 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
     if (!contract || !tokenId) return;
 
     // ─── Step 3: Build features (~8ms, sync) ──────────────────────────────
+    // features is ALWAYS populated (even on rejection) so the decision log has real data.
 
     const featureResult = buildFeatureVector(contract, signal.side, tokenId, signal.price);
-    if (!featureResult.features) {
-      // Log rejection with specific gate reason (e.g. NO_SPOT_PRICE, TIMING_TOO_LATE_45s, LOW_EDGE_0.0312)
-      decisionsLog.logDecision(contract, signal.side, ZERO_FEATURES, ZERO_SCORE, "SKIP", signal.usdcSize, signal, featureResult.rejectReason);
+    const features = featureResult.features;
+
+    if (featureResult.rejectReason) {
+      // Log rejection with REAL features (spotPrice, edge, midEdge, etc. — not zeros)
+      decisionsLog.logDecision(contract, signal.side, features, ZERO_SCORE, "SKIP", signal.usdcSize, signal, featureResult.rejectReason);
       logger.debug("pipeline",
-        `No features for ${signal.walletLabel} ${signal.side} on ${contract.asset} ${contract.conditionId.slice(0, 8)}...: ${featureResult.rejectReason}`
+        `Gate rejected ${signal.walletLabel} ${signal.side} on ${contract.asset} ${contract.conditionId.slice(0, 8)}...: ${featureResult.rejectReason}`
       );
       return;
     }
-    const features = featureResult.features;
 
     // Override entryPrice + midEdge: use whale's price as floor in LIVE mode
     // The book ask can be massively stale (whale swept the book, remaining asks are higher).

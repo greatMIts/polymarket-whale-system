@@ -1,7 +1,7 @@
 // ─── Layer 2: Feature Assembly ───────────────────────────────────────────────
 // Combines all data sources into a single FeatureVector.
 // Pure snapshot function — grabs state from all Layer 1 modules at call time.
-// NO async, NO side effects. Returns null if data is insufficient.
+// NO async, NO side effects. Returns features ALWAYS (even on rejection).
 // Diagnostic logging on every gate rejection (throttled) for debugging.
 
 import { FeatureVector, ContractInfo, Side, Direction, Asset } from "./types";
@@ -55,12 +55,14 @@ function logGateSummary(): void {
 }
 
 // ─── Build Feature Vector ──────────────────────────────────────────────────
-// Returns { features, rejectReason } — features is null when a gate blocks,
-// with rejectReason giving the specific gate name for the score feed.
+// Returns { features, rejectReason } — features is ALWAYS populated with
+// whatever data was available (even on rejection). rejectReason is null
+// when all gates pass. This ensures the decision log always has real data.
 
-export type FeatureResult =
-  | { features: FeatureVector; rejectReason: null }
-  | { features: null; rejectReason: string };
+export type FeatureResult = {
+  features: FeatureVector;
+  rejectReason: string | null;
+};
 
 export function buildFeatureVector(
   contract: ContractInfo,
@@ -71,40 +73,27 @@ export function buildFeatureVector(
   gateStats.total++;
   logGateSummary();
 
-  // 1. Spot price from Binance
-  const spotPrice = binance.getPrice(contract.asset);
-  if (!spotPrice || spotPrice === 0) { gateStats.noSpot++; return { features: null, rejectReason: "NO_SPOT_PRICE" }; }
+  const runtime = getRuntime();
+  const now = Date.now();
 
-  // 1b. Per-asset staleness check (Bug 9 fix)
-  if (binance.isAssetStale(contract.asset)) { gateStats.assetStale++; return { features: null, rejectReason: "ASSET_STALE" }; }
+  // ─── Phase 1: Gather all data sources ─────────────────────────────────
+  // Compute as much as possible before checking gates.
+
+  // 1. Spot price from Binance
+  const spotPrice = binance.getPrice(contract.asset) || 0;
+  const assetStale = binance.isAssetStale(contract.asset);
 
   // 2. Book state from Polymarket
   const book = polyBook.getBook(tokenId);
-  if (!book || book.mid === 0) { gateStats.noBook++; return { features: null, rejectReason: "NO_BOOK" }; }
+  const bookMid = book?.mid || 0;
+  const bookSpread = book?.spread || 0;
+  const bookAsk = book?.ask || 0;
 
   // 3. Timing
-  const now = Date.now();
   const secsRemaining = Math.max(0, (contract.endTs - now) / 1000);
-  const runtime = getRuntime();
 
-  // Hard gate: must have enough time (uses runtime config for hot-reload)
-  if (secsRemaining < runtime.minSecsRemaining) {
-    gateStats.timing++;
-    return { features: null, rejectReason: `TIMING_TOO_LATE_${Math.round(secsRemaining)}s` };
-  }
-  if (secsRemaining > runtime.maxSecsRemaining) {
-    gateStats.timing++;
-    return { features: null, rejectReason: `TIMING_TOO_EARLY_${Math.round(secsRemaining)}s` };
-  }
-
-  // 4. Entry price: use whale's actual price when available (book ask is stale after whale sweep)
-  //    Fallback to book.ask for paper mode / when no whale price provided
-  const entryPrice = (whalePrice && whalePrice > 0) ? whalePrice : book.ask;
-  if (entryPrice <= 0 || entryPrice >= 1) { gateStats.badEntry++; return { features: null, rejectReason: `BAD_ENTRY_${entryPrice.toFixed(4)}` }; }
-
-  // Hard gates: price range & spread (uses runtime config for hot-reload)
-  if (entryPrice < runtime.minPrice || entryPrice > runtime.maxPrice) { gateStats.priceRange++; return { features: null, rejectReason: `PRICE_OUT_OF_RANGE_${entryPrice.toFixed(4)}` }; }
-  if (book.spread > runtime.maxBookSpread) { gateStats.spread++; return { features: null, rejectReason: `SPREAD_TOO_WIDE_${book.spread.toFixed(4)}` }; }
+  // 4. Entry price: use whale's actual price when available
+  const entryPrice = (whalePrice && whalePrice > 0) ? whalePrice : bookAsk;
 
   // 5. Deltas and direction from Binance
   const delta30s = binance.getDelta30s(contract.asset);
@@ -117,45 +106,23 @@ export function buildFeatureVector(
     ? pricing.computeRealizedVol(history, now)
     : null;
 
-  // 7. Fair value via Black-Scholes
-  const strikePrice = contract.strikePrice || spotPrice;  // fallback to current price if klines fetch failed
+  // 7. Fair value via Black-Scholes (only if we have spotPrice)
+  const strikePrice = contract.strikePrice || spotPrice;
   const bsDirection: "UP" | "DOWN" = side === "Up" ? "UP" : "DOWN";
-  const annualizedVol = vol1h || 0.60;  // default 60% annual vol if no history yet
-  const fairValue = pricing.computeBinaryFairValue(
-    spotPrice,
-    strikePrice,
-    secsRemaining,
-    annualizedVol,
-    bsDirection
-  );
+  const annualizedVol = vol1h || 0.60;
+  const fairValue = spotPrice > 0 && secsRemaining > 0
+    ? pricing.computeBinaryFairValue(spotPrice, strikePrice, secsRemaining, annualizedVol, bsDirection)
+    : 0;
 
-  // 8. Derived metrics
-  const edgeVsSpot = pricing.computeEdgeVsSpot(fairValue, entryPrice);
-  const midEdge = pricing.computeMidEdge(book.mid, entryPrice);
+  // 8. Derived metrics (only if we have the inputs)
+  const edgeVsSpot = (fairValue > 0 && entryPrice > 0)
+    ? pricing.computeEdgeVsSpot(fairValue, entryPrice)
+    : 0;
+  const midEdge = (bookMid > 0 && entryPrice > 0)
+    ? pricing.computeMidEdge(bookMid, entryPrice)
+    : 0;
 
-  // Hard gate: minimum edge (uses runtime config for hot-reload)
-  if (edgeVsSpot < runtime.minEdgeVsSpot) {
-    gateStats.lowEdge++;
-    // Log first few edge rejections per contract to diagnose strike price issues
-    if (gateStats.lowEdge <= 3) {
-      const usingFallback = contract.strikePrice === null;
-      logger.debug("features", `Edge reject: ${contract.asset} ${side} edge=${edgeVsSpot.toFixed(4)} fair=${fairValue.toFixed(4)} entry=${entryPrice.toFixed(4)} strike=${strikePrice.toFixed(2)}${usingFallback ? " (FALLBACK=spot)" : ""} secsRem=${secsRemaining.toFixed(0)}`);
-    }
-    return { features: null, rejectReason: `LOW_EDGE_${edgeVsSpot.toFixed(4)}` };
-  }
-
-  // Hard gate: maximum edge cap — edgeVsSpot > 0.30 is anti-predictive (overshoot)
-  if (edgeVsSpot > runtime.maxEdgeVsSpot) {
-    gateStats.lowEdge++;
-    return { features: null, rejectReason: `HIGH_EDGE_${edgeVsSpot.toFixed(4)}` };
-  }
-
-  // Hard gate: midEdge must be < minMidEdge (default 0 = buying below mid)
-  if (midEdge >= runtime.minMidEdge) {
-    return { features: null, rejectReason: `HIGH_MID_EDGE_${midEdge.toFixed(4)}` };
-  }
-
-  // 9. Momentum alignment: does Binance direction agree with our bet?
+  // 9. Momentum alignment
   const momentumAligned = (side === "Up" && priceDirection === "UP") ||
                           (side === "Down" && priceDirection === "DOWN");
 
@@ -175,30 +142,100 @@ export function buildFeatureVector(
   const opposingWhales = whaleActivity.filter(w => w.side !== side);
   const whaleAgreement = concurrentWhales > 0 && opposingWhales.length === 0;
 
-  // ─── Assemble ──────────────────────────────────────────────────────────────
+  // ─── Assemble features (always complete) ──────────────────────────────
+
+  const features: FeatureVector = {
+    spotPrice,
+    delta30s,
+    delta5m,
+    vol1h,
+    priceDirection,
+    polyMid: bookMid,
+    bookSpread,
+    secsRemaining,
+    fairValue,
+    edgeVsSpot,
+    midEdge,
+    entryPrice,
+    momentumAligned,
+    hourOfDay,
+    concurrentWhales,
+    bestWalletTier,
+    whaleMaxSize,
+    whaleAgreement,
+  };
+
+  // ─── Phase 2: Check gates (features always returned) ──────────────────
+
+  // Gate 1: Spot price
+  if (spotPrice === 0) {
+    gateStats.noSpot++;
+    return { features, rejectReason: "NO_SPOT_PRICE" };
+  }
+
+  // Gate 1b: Per-asset staleness
+  if (assetStale) {
+    gateStats.assetStale++;
+    return { features, rejectReason: "ASSET_STALE" };
+  }
+
+  // Gate 2: Book data
+  if (!book || bookMid === 0) {
+    gateStats.noBook++;
+    return { features, rejectReason: "NO_BOOK" };
+  }
+
+  // Gate 3: Timing
+  if (secsRemaining < runtime.minSecsRemaining) {
+    gateStats.timing++;
+    return { features, rejectReason: `TIMING_TOO_LATE_${Math.round(secsRemaining)}s` };
+  }
+  if (secsRemaining > runtime.maxSecsRemaining) {
+    gateStats.timing++;
+    return { features, rejectReason: `TIMING_TOO_EARLY_${Math.round(secsRemaining)}s` };
+  }
+
+  // Gate 4: Entry price sanity
+  if (entryPrice <= 0 || entryPrice >= 1) {
+    gateStats.badEntry++;
+    return { features, rejectReason: `BAD_ENTRY_${entryPrice.toFixed(4)}` };
+  }
+
+  // Gate 5: Price range
+  if (entryPrice < runtime.minPrice || entryPrice > runtime.maxPrice) {
+    gateStats.priceRange++;
+    return { features, rejectReason: `PRICE_OUT_OF_RANGE_${entryPrice.toFixed(4)}` };
+  }
+
+  // Gate 6: Book spread
+  if (bookSpread > runtime.maxBookSpread) {
+    gateStats.spread++;
+    return { features, rejectReason: `SPREAD_TOO_WIDE_${bookSpread.toFixed(4)}` };
+  }
+
+  // Gate 7: Minimum edge
+  if (edgeVsSpot < runtime.minEdgeVsSpot) {
+    gateStats.lowEdge++;
+    if (gateStats.lowEdge <= 3) {
+      const usingFallback = contract.strikePrice === null;
+      logger.debug("features", `Edge reject: ${contract.asset} ${side} edge=${edgeVsSpot.toFixed(4)} fair=${fairValue.toFixed(4)} entry=${entryPrice.toFixed(4)} strike=${strikePrice.toFixed(2)}${usingFallback ? " (FALLBACK=spot)" : ""} secsRem=${secsRemaining.toFixed(0)}`);
+    }
+    return { features, rejectReason: `LOW_EDGE_${edgeVsSpot.toFixed(4)}` };
+  }
+
+  // Gate 8: Maximum edge cap
+  if (edgeVsSpot > runtime.maxEdgeVsSpot) {
+    gateStats.lowEdge++;
+    return { features, rejectReason: `HIGH_EDGE_${edgeVsSpot.toFixed(4)}` };
+  }
+
+  // Gate 9: midEdge must be < minMidEdge (default 0 = buying below mid)
+  if (midEdge >= runtime.minMidEdge) {
+    return { features, rejectReason: `HIGH_MID_EDGE_${midEdge.toFixed(4)}` };
+  }
+
+  // ─── All gates passed ─────────────────────────────────────────────────
 
   gateStats.passed++;
-  return {
-    features: {
-      spotPrice,
-      delta30s,
-      delta5m,
-      vol1h,
-      priceDirection,
-      polyMid: book.mid,
-      bookSpread: book.spread,
-      secsRemaining,
-      fairValue,
-      edgeVsSpot,
-      midEdge,
-      entryPrice,
-      momentumAligned,
-      hourOfDay,
-      concurrentWhales,
-      bestWalletTier,
-      whaleMaxSize,
-      whaleAgreement,
-    },
-    rejectReason: null,
-  };
+  return { features, rejectReason: null };
 }
