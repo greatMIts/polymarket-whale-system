@@ -75,6 +75,44 @@ export function logDecision(
   return entry;
 }
 
+// ─── Log Pre-Filter Rejection (lightweight — no features/score needed) ──────
+// These are signals rejected before scoring (TOO_CLOSE_TO_EXPIRY, SIZE_TOO_SMALL, etc.)
+// Logged to the in-memory buffer so the dashboard score feed always shows activity.
+
+export function logPreFilterReject(
+  signal: WhaleSignal,
+  contract: ContractInfo | undefined,
+  rejectReason: string
+): void {
+  const now = Date.now();
+  const entry: DecisionLogEntry = {
+    ts: now,
+    conditionId: signal.conditionId,
+    title: contract?.title || signal.conditionId.slice(0, 12) + "...",
+    side: signal.side as Side,
+    asset: (contract?.asset || "BTC") as Asset,
+    score: 0,
+    components: { edge: 0, momentum: 0, time: 0, whale: 0 },
+    features: {} as any,
+    action: "SKIP",
+    skipReason: rejectReason,
+    sizeUsd: signal.usdcSize,
+    entryPrice: signal.price,
+    secsRemaining: contract ? Math.max(0, (contract.endTs - now) / 1000) : 0,
+    triggeredByWallet: signal.wallet,
+    whaleWalletLabel: signal.walletLabel,
+    whaleTier: signal.tier,
+    whaleUsdcSize: signal.usdcSize,
+    whaleEntryPrice: signal.price,
+  };
+
+  // In-memory buffer only (don't persist pre-filter rejects to JSONL — too noisy for ML data)
+  recentDecisions.push(entry);
+  if (recentDecisions.length > MAX_RECENT) {
+    recentDecisions.splice(0, recentDecisions.length - MAX_RECENT);
+  }
+}
+
 // ─── Backfill Resolution ────────────────────────────────────────────────────
 // Called when a position resolves. Updates matching decisions with outcome.
 

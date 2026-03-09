@@ -89,6 +89,8 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
       logger.debug("pipeline",
         `Rejected ${signal.walletLabel} ${signal.side} on ${signal.conditionId.slice(0, 8)}...: ${validation.rejectReason}`
       );
+      // Log to score feed so dashboard always shows activity
+      decisionsLog.logPreFilterReject(signal, contract || undefined, validation.rejectReason || "UNKNOWN");
       return;
     }
 
