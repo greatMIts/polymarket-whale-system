@@ -3,7 +3,7 @@
 // LIVE mode: FOK order via @polymarket/clob-client at min(bookAsk, fokMaxPrice).
 // Handles CLOB client initialization from private key → derive API creds → client.
 
-import { ClobClient } from "@polymarket/clob-client";
+import { ClobClient, Side as ClobSide, OrderType } from "@polymarket/clob-client";
 import { ethers } from "ethers";
 import { Trade, WhaleSignal, Contract, Side, Mode } from "./types";
 import { ENV, URLS, getFilter } from "./config";
@@ -156,27 +156,30 @@ async function executeLive(trade: Trade): Promise<Trade | null> {
   );
 
   try {
-    // Create and send a FOK (Fill-or-Kill) order
-    const order = await client.createOrder({
-      tokenID: trade.tokenId,
-      price: trade.entryPrice,
-      side: "BUY" as any,
-      size: trade.shares,
-      feeRateBps: 0,
-      nonce: 0,
-      expiration: 0,
-    });
+    // FOK market order using SDK convenience method (same as V1)
+    // Uses amount in USD, SDK auto-resolves tickSize + negRisk per token
+    const response = await client.createAndPostMarketOrder(
+      {
+        tokenID: trade.tokenId,
+        price: trade.entryPrice,   // price cap — SDK won't fill above this
+        amount: trade.sizeUsd,     // USD amount to spend
+        side: ClobSide.BUY,
+      },
+      {} as any,  // SDK auto-resolves tickSize + negRisk per token
+      OrderType.FOK,
+    );
 
-    const result = await client.postOrder(order, "FOK" as any);
+    log.debug(`CLOB FOK response: ${JSON.stringify(response)}`);
 
-    if (result && (result as any).orderID) {
-      trade.orderId = (result as any).orderID;
-      log.info(`LIVE FILLED: orderId=${trade.orderId} latency=${trade.pipelineLatencyMs}ms`);
-      return trade;
-    } else {
-      log.warn("FOK order not filled — likely no liquidity at price");
+    if (!response || !(response as any).success) {
+      const errMsg = (response as any)?.errorMsg || (response as any)?.error || (response as any)?.status || JSON.stringify(response);
+      log.warn(`FOK order rejected: ${errMsg}`);
       return null;
     }
+
+    trade.orderId = (response as any).orderID;
+    log.info(`LIVE FILLED: orderId=${trade.orderId} latency=${trade.pipelineLatencyMs}ms`);
+    return trade;
   } catch (err: any) {
     log.error(`LIVE order failed: ${err.message}`);
     return null;
