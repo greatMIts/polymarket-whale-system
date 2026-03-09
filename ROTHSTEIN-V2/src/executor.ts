@@ -26,10 +26,13 @@ async function initClobClient(): Promise<ClobClient> {
   if (!ENV.polyPrivateKey) {
     throw new Error("POLY_PRIVATE_KEY not set — cannot initialize CLOB client");
   }
+  if (!ENV.polyWalletAddress) {
+    throw new Error("POLY_WALLET_ADDRESS not set — cannot initialize CLOB client");
+  }
 
   log.info("Initializing CLOB client...");
 
-  const wallet = new ethers.Wallet(ENV.polyPrivateKey);
+  const signer = new ethers.Wallet(ENV.polyPrivateKey);
   const chainId = 137; // Polygon mainnet
 
   // If API key/secret/passphrase are provided, use them directly
@@ -37,31 +40,27 @@ async function initClobClient(): Promise<ClobClient> {
     clobClient = new ClobClient(
       URLS.clobApi,
       chainId,
-      wallet,
+      signer,
       {
         key: ENV.polyApiKey,
         secret: ENV.polyApiSecret,
         passphrase: ENV.polyPassphrase,
       },
-      ENV.polySignatureType
+      ENV.polySignatureType,
+      ENV.polyWalletAddress
     );
   } else {
-    // Derive API credentials from the private key
-    clobClient = new ClobClient(
-      URLS.clobApi,
-      chainId,
-      wallet,
-      undefined,
-      ENV.polySignatureType
-    );
+    // Derive API credentials from private key (same as V1)
     log.info("Deriving API credentials...");
-    const creds = await clobClient.createApiKey();
+    const tempClient = new ClobClient(URLS.clobApi, chainId, signer);
+    const creds = await tempClient.createOrDeriveApiKey();
     clobClient = new ClobClient(
       URLS.clobApi,
       chainId,
-      wallet,
+      signer,
       creds,
-      ENV.polySignatureType
+      ENV.polySignatureType,
+      ENV.polyWalletAddress
     );
     log.info("API credentials derived successfully");
   }

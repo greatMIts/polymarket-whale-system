@@ -102,6 +102,18 @@ export function start(): void {
     res.json({ paused: false });
   });
 
+  // Mode switch (PAPER/LIVE)
+  app.post("/api/mode", (req, res) => {
+    const newMode = req.body.mode;
+    if (newMode === "PAPER" || newMode === "LIVE") {
+      ENV.mode = newMode;
+      log.info(`Mode switched to ${newMode} via API`);
+      res.json({ mode: newMode });
+    } else {
+      res.status(400).json({ error: "Invalid mode. Use PAPER or LIVE." });
+    }
+  });
+
   // Download decisions/trades files
   app.get("/api/download/:file", (req, res) => {
     const allowed = ["decisions.jsonl", "trades.jsonl"];

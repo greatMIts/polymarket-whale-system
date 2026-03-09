@@ -93,6 +93,49 @@ body {
 .badge-live { background: rgba(239,68,68,.18); color: var(--red); border: 1px solid rgba(239,68,68,.3); }
 .badge-paper { background: rgba(245,158,11,.15); color: var(--accent); border: 1px solid rgba(245,158,11,.3); }
 .badge-paused { background: rgba(107,107,128,.15); color: var(--text-dim); border: 1px solid rgba(107,107,128,.3); }
+/* ── MODE TOGGLE ─────────────────────────────────────────── */
+.mode-toggle {
+  display: flex;
+  position: relative;
+  background: rgba(20,20,30,.8);
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  height: 28px;
+}
+.mode-opt {
+  position: relative;
+  z-index: 2;
+  padding: 4px 14px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  transition: color .2s;
+  display: flex;
+  align-items: center;
+}
+.mode-opt.active { color: #fff; }
+.mode-slider {
+  position: absolute;
+  top: 2px;
+  height: calc(100% - 4px);
+  width: calc(50% - 2px);
+  border-radius: 4px;
+  transition: left .25s ease, background .25s ease;
+  z-index: 1;
+}
+.mode-toggle[data-mode="PAPER"] .mode-slider {
+  left: 2px;
+  background: rgba(245,158,11,.35);
+}
+.mode-toggle[data-mode="LIVE"] .mode-slider {
+  left: calc(50%);
+  background: rgba(239,68,68,.4);
+}
 .conn-status {
   display: flex;
   align-items: center;
@@ -601,7 +644,11 @@ body {
   <!-- ═══ HEADER ═══ -->
   <div id="header">
     <div class="brand">ROTHSTEIN <span>V2</span></div>
-    <div id="mode-badge" class="badge badge-paper">PAPER</div>
+    <div id="mode-toggle" class="mode-toggle" onclick="toggleMode()">
+      <div class="mode-opt" data-mode="PAPER">PAPER</div>
+      <div class="mode-opt active" data-mode="LIVE">LIVE</div>
+      <div class="mode-slider"></div>
+    </div>
     <div id="paused-badge" class="badge badge-paused" style="display:none;">PAUSED</div>
     <div class="conn-status">
       <div id="conn-dot" class="conn-dot off"></div>
@@ -947,10 +994,12 @@ body {
   }
 
   function updateHeader() {
-    // Mode badge
-    const mb = $('mode-badge');
-    if (state.mode === 'LIVE') { mb.className = 'badge badge-live'; mb.textContent = 'LIVE'; }
-    else { mb.className = 'badge badge-paper'; mb.textContent = 'PAPER'; }
+    // Mode toggle
+    const mt = $('mode-toggle');
+    mt.setAttribute('data-mode', state.mode);
+    mt.querySelectorAll('.mode-opt').forEach(o => {
+      o.classList.toggle('active', o.getAttribute('data-mode') === state.mode);
+    });
 
     // Paused
     const pb = $('paused-badge');
@@ -1229,8 +1278,10 @@ body {
   function updateDecisions() {
     const decs = state.recentDecisions || [];
     $('dec-count').textContent = decs.length;
-    if (decs.length === lastDecCount) return;
-    lastDecCount = decs.length;
+    // Compare newest timestamp, not length (length caps at 100)
+    const newestTs = decs.length > 0 ? (decs[0].ts || 0) : 0;
+    if (newestTs === lastDecCount) return;
+    lastDecCount = newestTs;
 
     const feed = $('dec-feed');
     const wasAtBottom = feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 30;
@@ -1266,12 +1317,14 @@ body {
   }
 
   // ── WHALE FEED ────────────────────────────────────────────
-  let lastWfCount = 0;
+  let lastWfTs = 0;
   function updateWhaleFeed() {
     const signals = state.whaleSignals || [];
     $('wf-count').textContent = signals.length;
-    if (signals.length === lastWfCount) return;
-    lastWfCount = signals.length;
+    // Compare newest timestamp, not length (length caps at buffer max)
+    const newestTs = signals.length > 0 ? (signals[0].ts || signals[0].detectedAt || 0) : 0;
+    if (newestTs === lastWfTs) return;
+    lastWfTs = newestTs;
 
     const feed = $('whale-feed');
     let html = '';
@@ -1454,6 +1507,24 @@ body {
       }
     }).catch(function (e) {
       console.error('Failed to toggle pause:', e);
+    });
+  };
+
+  window.toggleMode = function () {
+    var host = location.origin || 'http://localhost:3000';
+    var newMode = (state && state.mode === 'LIVE') ? 'PAPER' : 'LIVE';
+    if (newMode === 'LIVE' && !confirm('Switch to LIVE mode? Real trades will be placed.')) return;
+    fetch(host + '/api/mode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: newMode })
+    }).then(function (res) {
+      if (res.ok && state) {
+        state.mode = newMode;
+        updateHeader();
+      }
+    }).catch(function (e) {
+      console.error('Failed to toggle mode:', e);
     });
   };
 
