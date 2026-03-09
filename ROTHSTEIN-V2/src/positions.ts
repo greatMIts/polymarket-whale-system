@@ -182,35 +182,44 @@ function closePosition(pos: Position, winningOutcome: string): void {
 }
 
 // ─── Persistence ─────────────────────────────────────────────────────────────
-// Append-only JSONL to data/trades.jsonl
+// Append-only CSV to data/trades.csv
+
+const TRADES_CSV_HEADERS = [
+  "ts", "datetime", "tradeId", "status", "pnl",
+  "conditionId", "asset", "side", "entryPrice", "sizeUsd",
+  "mode", "whaleLabel", "whalePrice", "slippage", "latencyMs",
+];
+
+function csvEscape(val: any): string {
+  const s = String(val ?? "");
+  if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
 
 function ensureDataDir(): void {
   const dir = path.resolve(ENV.dataDir);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  tradesFile = path.resolve(dir, "trades.jsonl");
+  tradesFile = path.resolve(dir, "trades.csv");
+  // Write CSV header if file doesn't exist or is empty
+  if (!fs.existsSync(tradesFile) || fs.statSync(tradesFile).size === 0) {
+    fs.writeFileSync(tradesFile, TRADES_CSV_HEADERS.join(",") + "\n");
+  }
 }
 
 function persistTrade(trade: Trade, status: string, pnl?: number): void {
   try {
-    const line = JSON.stringify({
-      ts: Date.now(),
-      tradeId: trade.id,
-      status,
-      pnl: pnl ?? null,
-      conditionId: trade.conditionId,
-      asset: trade.asset,
-      side: trade.side,
-      entryPrice: trade.entryPrice,
-      sizeUsd: trade.sizeUsd,
-      mode: trade.mode,
-      whaleLabel: trade.whaleLabel,
-      whalePrice: trade.whalePrice,
-      slippage: trade.slippage,
-      latencyMs: trade.pipelineLatencyMs,
-    });
-    fs.appendFileSync(tradesFile, line + "\n");
+    const now = Date.now();
+    const dt = new Date(now).toISOString();
+    const vals = [
+      now, dt, trade.id, status, pnl ?? "",
+      trade.conditionId, trade.asset, trade.side, trade.entryPrice, trade.sizeUsd,
+      trade.mode, trade.whaleLabel, trade.whalePrice, trade.slippage, trade.pipelineLatencyMs,
+    ];
+    fs.appendFileSync(tradesFile, vals.map(csvEscape).join(",") + "\n");
   } catch (err: any) {
     log.error("Failed to persist trade", err.message);
   }

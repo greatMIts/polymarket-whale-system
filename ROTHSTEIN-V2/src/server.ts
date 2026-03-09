@@ -116,7 +116,7 @@ export function start(): void {
 
   // Download decisions/trades files
   app.get("/api/download/:file", (req, res) => {
-    const allowed = ["decisions.jsonl", "trades.jsonl"];
+    const allowed = ["decisions.csv", "trades.csv"];
     const file = req.params.file;
     if (!allowed.includes(file)) return res.status(404).send("Not found");
     const filePath = path.resolve(ENV.dataDir, file);
