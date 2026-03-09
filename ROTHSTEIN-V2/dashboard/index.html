@@ -817,6 +817,11 @@ body {
         <button class="sb-btn primary" onclick="applyFilter()">Apply Changes</button>
         <button class="sb-btn" id="pause-btn" onclick="togglePause()" style="margin-top:6px;">Pause Bot</button>
       </div>
+      <div class="sb-section" style="border-top:1px solid var(--card-border);padding-top:10px;margin-top:6px;">
+        <div style="font-size:.7rem;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">Data Export</div>
+        <button class="sb-btn" onclick="downloadFile('decisions.jsonl')" style="margin-bottom:4px;width:100%;">Download Decisions</button>
+        <button class="sb-btn" onclick="downloadFile('trades.jsonl')" style="width:100%;">Download Trades</button>
+      </div>
     </div>
   </div>
 
@@ -1508,6 +1513,11 @@ body {
     }).catch(function (e) {
       console.error('Failed to toggle pause:', e);
     });
+  };
+
+  window.downloadFile = function (filename) {
+    var host = location.origin || 'http://localhost:3000';
+    window.open(host + '/api/download/' + filename, '_blank');
   };
 
   window.toggleMode = function () {
