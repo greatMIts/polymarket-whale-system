@@ -156,7 +156,8 @@ export interface WhaleSignal {
   conditionId: string;
   tier: number;                // 1, 2, or 3
   txHash?: string;             // Polymarket transaction hash for dedup
-  detectedAt?: number;         // Timestamp when we detected this signal
+  detectedAt?: number;         // Timestamp when we first detected this signal (from whale-monitor)
+  aggregatedAt?: number;       // Timestamp when aggregator fired (threshold crossed)
 }
 
 // ─── Whale Copy Metadata ───────────────────────────────────────────────────

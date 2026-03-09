@@ -27,7 +27,7 @@ interface AggBucket {
   tradeCount: number;
   signals: WhaleSignal[];
   firstTs: number;          // timestamp of first trade in window
-  triggered: boolean;       // already emitted aggregated signal
+  triggeredAtUsd: number;   // last USD threshold that fired (0 = not yet triggered, re-fires every $minAggregatedSize increment)
 }
 
 // ─── Module State ────────────────────────────────────────────────────────────
@@ -85,7 +85,7 @@ export function ingest(signal: WhaleSignal): void {
 
   // Create new bucket or reset if window expired
   if (!bucket || (Date.now() - bucket.firstTs > runtime.aggregationWindowMs)) {
-    if (bucket && !bucket.triggered) {
+    if (bucket && bucket.triggeredAtUsd === 0) {
       totalExpired++;
       logger.debug("aggregator",
         `Expired bucket ${signal.conditionId.slice(0, 8)} ${bucket.side}: $${bucket.totalUsd.toFixed(0)} from ${bucket.tradeCount} trades (didn't reach $${runtime.minAggregatedSize})`
@@ -100,7 +100,7 @@ export function ingest(signal: WhaleSignal): void {
       tradeCount: 0,
       signals: [],
       firstTs: Date.now(),
-      triggered: false,
+      triggeredAtUsd: 0,
     };
     buckets.set(key, bucket);
   }
@@ -115,9 +115,11 @@ export function ingest(signal: WhaleSignal): void {
     `${signal.walletLabel} +$${signal.usdcSize.toFixed(0)} on ${signal.conditionId.slice(0, 8)} ${signal.side} → cumulative $${bucket.totalUsd.toFixed(0)}/${runtime.minAggregatedSize} (${bucket.tradeCount} trades)`
   );
 
-  // Check threshold
-  if (!bucket.triggered && bucket.totalUsd >= runtime.minAggregatedSize) {
-    bucket.triggered = true;
+  // Check threshold — re-triggers at every $minAggregatedSize increment
+  // e.g. at $20, $40, $60... so heavy whale activity gets multiple evaluations
+  const nextThreshold = bucket.triggeredAtUsd + runtime.minAggregatedSize;
+  if (bucket.totalUsd >= nextThreshold) {
+    bucket.triggeredAtUsd = Math.floor(bucket.totalUsd / runtime.minAggregatedSize) * runtime.minAggregatedSize;
     totalTriggered++;
 
     // Build aggregated signal
@@ -128,7 +130,8 @@ export function ingest(signal: WhaleSignal): void {
       ...bestSignal,
       usdcSize: bucket.totalUsd,     // override with accumulated total
       price: vwap,                    // VWAP across all micro-trades
-      detectedAt: Date.now(),         // fresh detection timestamp
+      // Keep bestSignal.detectedAt (original whale-monitor detection time) for truthful latency
+      aggregatedAt: Date.now(),       // when aggregator threshold was crossed
     };
 
     logger.info("aggregator",
@@ -161,7 +164,7 @@ function cleanup(): void {
 
   for (const [key, bucket] of buckets) {
     if (bucket.firstTs < cutoff) {
-      if (!bucket.triggered) {
+      if (bucket.triggeredAtUsd === 0) {
         totalExpired++;
       }
       buckets.delete(key);

@@ -15,7 +15,7 @@
 //   Bug #3 v4:  risk.checkTotalRisk() dollar risk check
 //   Bug #1 v4:  positions.openPosition(execution) — CRITICAL
 
-import { WhaleSignal, ContractInfo, Side } from "./types";
+import { WhaleSignal, ContractInfo, Side, FeatureVector, ScoringResult } from "./types";
 import { CONFIG, getRuntime } from "./config";
 import { logger } from "./logger";
 import * as whaleMonitor from "./whale-monitor";
@@ -31,6 +31,24 @@ import * as risk from "./risk";
 import * as pnl from "./pnl";
 import * as decisionsLog from "./decisions-log";
 import * as server from "./server";
+
+// ─── Zero stubs for early-rejection decision logging ─────────────────────────
+// Used when logging decisions BEFORE features/scoring are computed.
+// Makes all early rejections visible in the score feed and decisions CSV.
+
+const ZERO_FEATURES: FeatureVector = {
+  spotPrice: 0, delta30s: 0, delta5m: 0, vol1h: null, priceDirection: "FLAT",
+  polyMid: 0, bookSpread: 0, secsRemaining: 0, fairValue: 0,
+  edgeVsSpot: 0, midEdge: 0, entryPrice: 0, momentumAligned: false,
+  hourOfDay: 0, concurrentWhales: 0, bestWalletTier: 0, whaleMaxSize: 0, whaleAgreement: false,
+};
+
+const ZERO_SCORE: ScoringResult = {
+  totalScore: 0,
+  components: { edgeScore: 0, midEdgeScore: 0, momentumScore: 0, timingScore: 0, activityScore: 0, whaleBonus: 0, hourBonus: 0 },
+  recommendation: "SKIP",
+  suggestedSize: 0,
+};
 
 // ─── Module State ────────────────────────────────────────────────────────────
 
@@ -98,6 +116,10 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
 
     const validation = validateWhaleSignal(signal, contract || undefined, book || undefined);
     if (!validation.pass) {
+      // Log rejection to decisions file (was previously silent — only debug log)
+      if (contract) {
+        decisionsLog.logDecision(contract, signal.side, ZERO_FEATURES, ZERO_SCORE, "SKIP", signal.usdcSize, signal, validation.rejectReason);
+      }
       logger.debug("pipeline",
         `Rejected ${signal.walletLabel} ${signal.side} on ${signal.conditionId.slice(0, 8)}...: ${validation.rejectReason}`
       );
@@ -111,6 +133,8 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
 
     const features = buildFeatureVector(contract, signal.side, tokenId, signal.price);
     if (!features) {
+      // Log rejection to decisions file (was previously silent — only debug log)
+      decisionsLog.logDecision(contract, signal.side, ZERO_FEATURES, ZERO_SCORE, "SKIP", signal.usdcSize, signal, "FEATURES_UNAVAILABLE");
       logger.debug("pipeline",
         `No features for ${signal.walletLabel} ${signal.side} on ${contract.asset} ${contract.conditionId.slice(0, 8)}...`
       );

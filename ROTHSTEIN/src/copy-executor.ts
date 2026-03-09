@@ -111,6 +111,13 @@ export async function executeCopy(
       fillPrice = result.fillPrice;
       fillShares = result.fillShares;
     }
+
+    // CRITICAL: abort if order was placed but never filled (prevents phantom trades)
+    // pollForFill returns fillShares=0 when order isn't matched after retries.
+    // Without this check, the pipeline opens a position with phantom shares.
+    if (result && result.fillShares === 0) {
+      throw new Error(`NO_FILL: order ${result.orderId} not matched after ${FILL_POLL_RETRIES} polls`);
+    }
   }
 
   // Entry price: LIVE mode uses actual fill price from CLOB, paper mode uses whale's price
