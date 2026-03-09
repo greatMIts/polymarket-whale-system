@@ -57,11 +57,19 @@ export function evaluate(
     return { ...metrics, pass: false, reason: "No matching contract found" };
   }
 
-  // ─── Gate D: Timing — seconds remaining 150-300 ──────────────────────
-  const secsRemaining = (contract.endTs - now) / 1000;
-  metrics.secsRemaining = secsRemaining;
-  if (secsRemaining < cfg.minSecsRemaining || secsRemaining > cfg.maxSecsRemaining) {
-    return { ...metrics, pass: false, reason: `Secs remaining ${secsRemaining.toFixed(0)} outside [${cfg.minSecsRemaining}, ${cfg.maxSecsRemaining}]` };
+  // ─── Gate D: Timing — check whale's timing + our execution buffer ────
+  // Use whale's trade timestamp for the 150-300s window check (matches analysis)
+  const whaleSecsRemaining = (contract.endTs - signal.ts) / 1000;
+  const ourSecsRemaining = (contract.endTs - now) / 1000;
+  metrics.secsRemaining = ourSecsRemaining;
+
+  // Whale must have traded within the optimal window
+  if (whaleSecsRemaining < cfg.minSecsRemaining || whaleSecsRemaining > cfg.maxSecsRemaining) {
+    return { ...metrics, pass: false, reason: `Whale secs ${whaleSecsRemaining.toFixed(0)} outside [${cfg.minSecsRemaining}, ${cfg.maxSecsRemaining}]` };
+  }
+  // We need at least 15s to place our FOK order
+  if (ourSecsRemaining < 15) {
+    return { ...metrics, pass: false, reason: `Only ${ourSecsRemaining.toFixed(0)}s left — too late to execute` };
   }
 
   // ─── Gate E: Spot price available (not stale) ────────────────────────
@@ -90,7 +98,7 @@ export function evaluate(
     spotPrice,
     contract.strikePrice,
     contract.asset,
-    secsRemaining,
+    ourSecsRemaining,
     signal.side
   );
   metrics.fairValue = fairValue;

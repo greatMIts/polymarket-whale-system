@@ -50,7 +50,7 @@ export const WALLETS = [
 // Key findings:
 //   Momentum aligned:  60.3% WR, +$649K PnL
 //   Edge >= 0:         52-65% WR vs 35-41% negative
-//   Secs 150-300:      50-53% WR from whale's perspective (30-300 for our detection)
+//   Secs 150-300:      50-53% WR, best PnL density
 //   Block 0xa9ae(26%), 0xe594(37%), 0x113d(43%): consistent losers
 //   Whale size $3+:    53% WR (filters dust noise)
 //   Combined filter:   66% WR, $1.37/trade on $10 flat
@@ -61,7 +61,7 @@ const DEFAULT_FILTER: FilterConfig = {
   requireMomentum: true,
   minEdge: 0.0,
   maxEdge: 1.0,
-  minSecsRemaining: 30,   // 30s min — allows for polling delay from data-API
+  minSecsRemaining: 150,  // 150s min — optimal window from analysis
   maxSecsRemaining: 300,
   fokMaxPrice: 0.70,
   maxPositionsPerContract: 1,
