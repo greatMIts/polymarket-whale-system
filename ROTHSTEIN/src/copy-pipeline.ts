@@ -105,9 +105,17 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
       return;
     }
 
-    // Override midEdge: use whale's entry price vs book mid (matches spy-server whale_trades logic)
-    // Default buildFeatureVector uses book.ask which is always mid + spread/2 = constant
+    // Override entryPrice + midEdge: use whale's price as floor in LIVE mode
+    // The book ask can be massively stale (whale swept the book, remaining asks are higher).
+    // In LIVE mode: effective entry = max(book.ask, whale.price)
+    // In PAPER mode: entry = whale.price (simulated fill)
+    if (CONFIG.mode === "LIVE") {
+      features.entryPrice = Math.max(features.entryPrice, signal.price);
+    }
+    // midEdge: use whale's entry price vs book mid (matches spy-server whale_trades logic)
     features.midEdge = features.polyMid - signal.price;
+    // Re-derive edgeVsSpot with the corrected entry price
+    features.edgeVsSpot = features.fairValue - features.entryPrice;
 
     // ─── Step 4: Score (~5ms, sync) ────────────────────────────────────────
 

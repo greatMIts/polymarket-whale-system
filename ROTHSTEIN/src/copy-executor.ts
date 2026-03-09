@@ -80,22 +80,26 @@ export async function executeCopy(
   const currentAsk = book.ask;
   const isLive = CONFIG.mode === "LIVE";
 
-  // 3. Price staleness check — LIVE mode only
-  // In paper mode we simulate fills at the whale's entry price, so staleness is irrelevant.
-  // In live mode, reject ONLY if ask is MORE than 6 cents ABOVE whale's entry (we'd overpay).
-  // If ask is LOWER than whale's price, that's a BETTER deal — always enter.
+  // 3. Price logic — LIVE mode
+  // The whale already swept the order book up to their fill price.
+  // Our book ask may be STALE (showing pre-whale price like 0.51 when whale paid 0.74).
+  // NEVER use book ask alone — use max(ask, whalePrice) as our effective entry price.
+  // Reject ONLY if even the whale's price is too high (>0.85 = too expensive territory).
+  let effectiveAsk = currentAsk;
   if (isLive) {
-    const askDelta = currentAsk - signal.price;  // positive = ask higher than whale, negative = better price
-    if (askDelta > 0.06) {
-      throw new Error(`PRICE_STALE: ask=${currentAsk.toFixed(4)} whale=${signal.price.toFixed(4)} diff=+${askDelta.toFixed(4)} (ask too high)`);
+    effectiveAsk = Math.max(currentAsk, signal.price);
+    if (effectiveAsk > 0.85) {
+      throw new Error(`PRICE_TOO_HIGH: effective=${effectiveAsk.toFixed(4)} ask=${currentAsk.toFixed(4)} whale=${signal.price.toFixed(4)}`);
     }
-    if (askDelta < 0) {
-      logger.info("copy-executor", `Better price: ask=${currentAsk.toFixed(4)} < whale=${signal.price.toFixed(4)} (${Math.abs(askDelta).toFixed(4)} cheaper)`);
+    if (currentAsk < signal.price) {
+      logger.info("copy-executor", `Stale book: ask=${currentAsk.toFixed(4)} < whale=${signal.price.toFixed(4)} — using whale price as floor`);
+    } else if (currentAsk > signal.price + 0.06) {
+      throw new Error(`PRICE_STALE: ask=${currentAsk.toFixed(4)} whale=${signal.price.toFixed(4)} diff=+${(currentAsk - signal.price).toFixed(4)} (ask way above whale)`);
     }
   }
 
-  // Entry price: paper mode uses whale's price (simulated fill), live mode uses book ask
-  const entryPrice = isLive ? currentAsk : signal.price;
+  // Entry price: paper mode uses whale's price, live mode uses effective ask (max of book ask & whale price)
+  const entryPrice = isLive ? effectiveAsk : signal.price;
 
   // 4. Build WhaleCopyMeta (12 fields)
   const whaleCopy: WhaleCopyMeta = {
@@ -116,7 +120,7 @@ export async function executeCopy(
   // 5. Place order (live mode only)
   let orderId: string | undefined;
   if (isLive) {
-    orderId = await executeLiveOrder(tokenId, signal.side, sizeUsd, currentAsk);
+    orderId = await executeLiveOrder(tokenId, signal.side, sizeUsd, effectiveAsk);
   }
 
   // 6. Build TradeExecution
