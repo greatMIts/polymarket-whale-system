@@ -1,7 +1,15 @@
 // ─── Layer 2: Signal Validator ───────────────────────────────────────────────
-// Hard-gate sync checks on whale signals before pipeline processing.
-// Pure function — no state, no side effects, no async.
-// All gates are memory reads, expected latency <1ms.
+// Minimal pre-filter on whale signals BEFORE buildFeatureVector().
+// Only checks things that buildFeatureVector() CANNOT check itself:
+//   1. Blocked wallets (static blacklist)
+//   2. Min whale trade size (signal-level, not market data)
+//   3. Contract existence (can't build features without a contract)
+//   4. Asset check (BTC/ETH only — structural filter)
+//   5. Duration check (5-min contracts only — structural filter)
+//
+// All market-data gates (timing, price range, book, spread, edge) are handled
+// by buildFeatureVector() which ALWAYS returns real features even on rejection.
+// This ensures every decision in the CSV has populated metrics for analysis.
 
 import { WhaleSignal, ContractInfo, BookState } from "./types";
 import { CONFIG, getRuntime } from "./config";
@@ -18,11 +26,12 @@ export interface ValidationResult {
 }
 
 // ─── Validate Whale Signal ──────────────────────────────────────────────────
+// Checks ONLY structural/identity gates. Market-data gates are in features.ts.
 
 export function validateWhaleSignal(
   signal: WhaleSignal,
   contract: ContractInfo | undefined,
-  book: BookState | undefined
+  _book: BookState | undefined   // kept for API compat — no longer checked here
 ): ValidationResult {
   const runtime = getRuntime();
 
@@ -52,27 +61,9 @@ export function validateWhaleSignal(
     return { pass: false, rejectReason: "INVALID_DURATION" };
   }
 
-  // Gate 6: Time remaining (90s min + 15s latency buffer = 105s)
-  const secsRemaining = Math.max(0, (contract.endTs - Date.now()) / 1000);
-  if (secsRemaining < (runtime.minSecsRemaining + 15)) {
-    return { pass: false, rejectReason: "TOO_CLOSE_TO_EXPIRY" };
-  }
+  // Gates 6-9 (timing, price range, book, spread) REMOVED — handled by
+  // buildFeatureVector() which returns real features even on rejection.
 
-  // Gate 7: Price range check
-  if (signal.price < runtime.minPrice || signal.price > runtime.maxPrice) {
-    return { pass: false, rejectReason: "PRICE_OUT_OF_RANGE" };
-  }
-
-  // Gate 8: Book data existence
-  if (!book || book.mid <= 0) {
-    return { pass: false, rejectReason: "NO_BOOK_DATA" };
-  }
-
-  // Gate 9: Book spread check
-  if (book.spread > runtime.maxBookSpread) {
-    return { pass: false, rejectReason: "SPREAD_TOO_WIDE" };
-  }
-
-  // All gates passed
+  // All structural gates passed → proceed to buildFeatureVector()
   return { pass: true };
 }
