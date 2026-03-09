@@ -1,0 +1,1649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ROTHSTEIN V2 — Whale Copy-Trading Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ── RESET & BASE ─────────────────────────────────────────── */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg: #0a0a0f;
+  --card: #12121a;
+  --card-border: #1e1e2e;
+  --card-hover: #181828;
+  --accent: #f59e0b;
+  --green: #22c55e;
+  --red: #ef4444;
+  --text: #e2e2ea;
+  --text-dim: #6b6b80;
+  --text-mid: #9b9bb0;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Inter', -apple-system, sans-serif;
+  --radius: 8px;
+  --radius-sm: 5px;
+}
+html { font-size: 13px; }
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+  min-width: 1200px;
+}
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a4a; }
+
+/* ── LAYOUT SHELL ─────────────────────────────────────────── */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+#main-wrap {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+#main-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── HEADER ───────────────────────────────────────────────── */
+#header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 18px;
+  height: 54px;
+  min-height: 54px;
+  background: var(--card);
+  border-bottom: 1px solid var(--card-border);
+  flex-shrink: 0;
+}
+#header .brand {
+  font-weight: 900;
+  font-size: 1.15rem;
+  letter-spacing: 1.5px;
+  color: #fff;
+  white-space: nowrap;
+}
+#header .brand span { color: var(--accent); }
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.badge-live { background: rgba(239,68,68,.18); color: var(--red); border: 1px solid rgba(239,68,68,.3); }
+.badge-paper { background: rgba(245,158,11,.15); color: var(--accent); border: 1px solid rgba(245,158,11,.3); }
+.badge-paused { background: rgba(107,107,128,.15); color: var(--text-dim); border: 1px solid rgba(107,107,128,.3); }
+.conn-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.77rem;
+  font-weight: 600;
+  letter-spacing: .5px;
+}
+.conn-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.conn-dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.conn-dot.off { background: var(--red); box-shadow: 0 0 6px var(--red); }
+.header-spacer { flex: 1; }
+.price-block {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.price-block .label {
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  font-weight: 500;
+  font-family: var(--sans);
+}
+.price-block .delta {
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+.delta.pos { color: var(--green); }
+.delta.neg { color: var(--red); }
+.delta.flat { color: var(--text-dim); }
+.session-timer {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  color: var(--text-mid);
+  font-weight: 500;
+  letter-spacing: .5px;
+}
+#sidebar-toggle {
+  background: none;
+  border: 1px solid var(--card-border);
+  color: var(--text-dim);
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-family: var(--sans);
+  transition: all .15s;
+}
+#sidebar-toggle:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ── STATS BAR ────────────────────────────────────────────── */
+#stats-bar {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.stat-card {
+  flex: 1;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  text-align: center;
+}
+.stat-card .val {
+  font-family: var(--mono);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.3;
+}
+.stat-card .lbl {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  font-weight: 600;
+  margin-top: 1px;
+}
+
+/* ── CARD WRAPPER ─────────────────────────────────────────── */
+.panel {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.panel-hdr {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--card-border);
+  min-height: 34px;
+  flex-shrink: 0;
+}
+.panel-hdr .title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-mid);
+}
+.panel-hdr .pill {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  background: rgba(245,158,11,.12);
+  color: var(--accent);
+  padding: 1px 7px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+.panel-hdr .spacer { flex:1; }
+.panel-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── ROW 2: charts + decisions ────────────────────────────── */
+#row2 {
+  display: flex;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+#charts-col {
+  flex: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+#decisions-col {
+  flex: 4;
+  min-height: 0;
+}
+.chart-panel {
+  flex: 1;
+  min-height: 160px;
+}
+.chart-panel .panel-body { padding: 0; }
+.chart-wrap {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+.chart-wrap canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.chart-overlay {
+  position: absolute;
+  top: 6px;
+  left: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: none;
+  z-index: 2;
+}
+.chart-overlay .co-title {
+  font-size: 0.7rem;
+  color: var(--text-mid);
+  font-weight: 500;
+  max-width: 350px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chart-overlay .co-timer {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+.chart-price-tag {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  text-align: right;
+  pointer-events: none;
+  z-index: 2;
+}
+.chart-price-tag .price-val {
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fff;
+}
+.chart-price-tag .price-delta {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* ── DECISIONS FEED ───────────────────────────────────────── */
+#decisions-col .panel-body {
+  overflow-y: auto;
+  padding: 0;
+}
+.dec-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 5px 10px;
+  border-bottom: 1px solid rgba(30,30,46,.5);
+  font-size: 0.73rem;
+  line-height: 1.35;
+  transition: background .1s;
+}
+.dec-row:hover { background: rgba(255,255,255,.02); }
+.dec-row.copy { border-left: 3px solid var(--green); }
+.dec-row.skip { border-left: 3px solid transparent; }
+.dec-time {
+  font-family: var(--mono);
+  font-size: 0.67rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  min-width: 52px;
+  padding-top: 1px;
+}
+.dec-whale {
+  font-weight: 600;
+  font-size: 0.68rem;
+  padding: 0 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.dec-asset {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--text-mid);
+  font-weight: 600;
+  min-width: 28px;
+}
+.dec-side {
+  font-weight: 700;
+  font-size: 0.68rem;
+  min-width: 30px;
+}
+.dec-action {
+  font-weight: 700;
+  font-size: 0.65rem;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  padding: 0 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.dec-action.copy-act { background: rgba(34,197,94,.15); color: var(--green); }
+.dec-action.skip-act { background: rgba(107,107,128,.12); color: var(--text-dim); }
+.dec-meta {
+  flex: 1;
+  color: var(--text-dim);
+  font-size: 0.67rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dec-meta .tag {
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  color: var(--text-mid);
+  margin-right: 4px;
+}
+
+/* ── ROW 3: 3-column bottom ──────────────────────────────── */
+#row3 {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+  height: 220px;
+  min-height: 180px;
+}
+#row3 > .panel { flex: 1; }
+
+/* Whale feed */
+.wf-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-bottom: 1px solid rgba(30,30,46,.4);
+  font-size: 0.72rem;
+}
+.wf-row:hover { background: rgba(255,255,255,.02); }
+.wf-time { font-family: var(--mono); font-size: 0.66rem; color: var(--text-dim); min-width: 50px; }
+.wf-wallet { font-weight: 600; font-size: 0.68rem; padding: 0 4px; border-radius: 3px; white-space: nowrap; }
+.wf-asset { font-family: var(--mono); font-size: 0.68rem; color: var(--text-mid); font-weight: 600; }
+.wf-side { font-weight: 700; font-size: 0.7rem; }
+.wf-size { font-family: var(--mono); font-size: 0.72rem; color: #fff; font-weight: 600; }
+.wf-price { font-family: var(--mono); font-size: 0.68rem; color: var(--text-dim); }
+
+/* Open / Closed positions tables */
+.pos-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+.pos-table th {
+  text-align: left;
+  padding: 4px 8px;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: .7px;
+  color: var(--text-dim);
+  font-weight: 600;
+  border-bottom: 1px solid var(--card-border);
+  position: sticky;
+  top: 0;
+  background: var(--card);
+  z-index: 1;
+}
+.pos-table td {
+  padding: 4px 8px;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  border-bottom: 1px solid rgba(30,30,46,.3);
+  white-space: nowrap;
+}
+.pos-table tr:hover td { background: rgba(255,255,255,.02); }
+.pos-table tr.expiring td { background: rgba(239,68,68,.06); }
+.won-badge, .lost-badge {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: .5px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+.won-badge { background: rgba(34,197,94,.15); color: var(--green); }
+.lost-badge { background: rgba(239,68,68,.15); color: var(--red); }
+
+/* ── SIDEBAR ──────────────────────────────────────────────── */
+#sidebar {
+  width: 280px;
+  min-width: 280px;
+  background: var(--card);
+  border-left: 1px solid var(--card-border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  transition: margin-right .2s ease;
+  flex-shrink: 0;
+}
+#sidebar.hidden {
+  margin-right: -280px;
+}
+.sb-section {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--card-border);
+}
+.sb-section .sb-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+.sb-brand {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+.sb-brand span { color: var(--accent); }
+.sb-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 7px;
+}
+.sb-field label {
+  font-size: 0.72rem;
+  color: var(--text-mid);
+  font-weight: 500;
+}
+.sb-field input[type="number"],
+.sb-field input[type="text"] {
+  width: 90px;
+  background: var(--bg);
+  border: 1px solid var(--card-border);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  text-align: right;
+  outline: none;
+  transition: border .15s;
+}
+.sb-field input:focus { border-color: var(--accent); }
+/* Toggle switch */
+.toggle-wrap {
+  position: relative;
+  width: 36px;
+  height: 20px;
+}
+.toggle-wrap input { display: none; }
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: #2a2a3a;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background .2s;
+}
+.toggle-slider::after {
+  content: '';
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 16px; height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform .2s;
+}
+.toggle-wrap input:checked + .toggle-slider { background: var(--accent); }
+.toggle-wrap input:checked + .toggle-slider::after { transform: translateX(16px); }
+.sb-blocked {
+  width: 100%;
+  min-height: 50px;
+  background: var(--bg);
+  border: 1px solid var(--card-border);
+  color: var(--text-mid);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  resize: vertical;
+  outline: none;
+}
+.sb-blocked:focus { border-color: var(--accent); }
+.sb-btn {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: .5px;
+  cursor: pointer;
+  transition: all .15s;
+  margin-top: 6px;
+}
+.sb-btn.primary { background: var(--accent); color: #000; }
+.sb-btn.primary:hover { background: #e8900a; }
+.sb-btn.danger { background: rgba(239,68,68,.15); color: var(--red); border: 1px solid rgba(239,68,68,.3); }
+.sb-btn.danger:hover { background: rgba(239,68,68,.25); }
+.sb-btn.success { background: rgba(34,197,94,.15); color: var(--green); border: 1px solid rgba(34,197,94,.3); }
+.sb-btn.success:hover { background: rgba(34,197,94,.25); }
+
+/* ── HEALTH BAR ───────────────────────────────────────────── */
+#health-bar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 0 18px;
+  height: 28px;
+  min-height: 28px;
+  background: var(--card);
+  border-top: 1px solid var(--card-border);
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}
+.health-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 500;
+}
+.health-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.health-dot.on { background: var(--green); box-shadow: 0 0 4px var(--green); }
+.health-dot.off { background: var(--red); box-shadow: 0 0 4px var(--red); }
+
+/* ── UTIL ─────────────────────────────────────────────────── */
+.c-green { color: var(--green); }
+.c-red { color: var(--red); }
+.c-accent { color: var(--accent); }
+.c-dim { color: var(--text-dim); }
+.scrollable { overflow-y: auto; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ═══ HEADER ═══ -->
+  <div id="header">
+    <div class="brand">ROTHSTEIN <span>V2</span></div>
+    <div id="mode-badge" class="badge badge-paper">PAPER</div>
+    <div id="paused-badge" class="badge badge-paused" style="display:none;">PAUSED</div>
+    <div class="conn-status">
+      <div id="conn-dot" class="conn-dot off"></div>
+      <span id="conn-label">DISCONNECTED</span>
+    </div>
+    <div class="header-spacer"></div>
+    <div class="price-block">
+      <span class="label">BTC</span>
+      <span id="hdr-btc-price">—</span>
+      <span id="hdr-btc-delta" class="delta flat">—</span>
+    </div>
+    <div class="price-block">
+      <span class="label">ETH</span>
+      <span id="hdr-eth-price">—</span>
+      <span id="hdr-eth-delta" class="delta flat">—</span>
+    </div>
+    <div class="session-timer" id="session-timer">00:00:00</div>
+    <button id="sidebar-toggle" onclick="toggleSidebar()">&#9881; Settings</button>
+  </div>
+
+  <!-- ═══ MAIN WRAP ═══ -->
+  <div id="main-wrap">
+    <div id="main-content">
+
+      <!-- ═══ STATS BAR ═══ -->
+      <div id="stats-bar">
+        <div class="stat-card"><div class="val" id="s-trades">0</div><div class="lbl">Trades</div></div>
+        <div class="stat-card"><div class="val c-green" id="s-wins">0</div><div class="lbl">Wins</div></div>
+        <div class="stat-card"><div class="val c-red" id="s-losses">0</div><div class="lbl">Losses</div></div>
+        <div class="stat-card"><div class="val" id="s-winrate">—</div><div class="lbl">Win Rate</div></div>
+        <div class="stat-card"><div class="val" id="s-pnl">$0.00</div><div class="lbl">Session PnL</div></div>
+        <div class="stat-card"><div class="val c-red" id="s-dd">$0.00</div><div class="lbl">Max Drawdown</div></div>
+        <div class="stat-card"><div class="val" id="s-consec">0</div><div class="lbl">Consec. Losses</div></div>
+      </div>
+
+      <!-- ═══ ROW 2: Charts + Decisions ═══ -->
+      <div id="row2">
+        <div id="charts-col">
+          <!-- BTC CHART -->
+          <div class="panel chart-panel">
+            <div class="panel-hdr">
+              <span class="title">BTC Live</span>
+              <span class="pill" id="btc-chart-price">—</span>
+              <span class="spacer"></span>
+            </div>
+            <div class="panel-body">
+              <div class="chart-wrap">
+                <canvas id="btc-canvas"></canvas>
+                <div class="chart-overlay">
+                  <div class="co-title" id="btc-co-title">No active contract</div>
+                  <div class="co-timer" id="btc-co-timer">—</div>
+                </div>
+                <div class="chart-price-tag">
+                  <div class="price-val" id="btc-price-val">—</div>
+                  <div class="price-delta" id="btc-price-delta">—</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- ETH CHART -->
+          <div class="panel chart-panel">
+            <div class="panel-hdr">
+              <span class="title">ETH Live</span>
+              <span class="pill" id="eth-chart-price">—</span>
+              <span class="spacer"></span>
+            </div>
+            <div class="panel-body">
+              <div class="chart-wrap">
+                <canvas id="eth-canvas"></canvas>
+                <div class="chart-overlay">
+                  <div class="co-title" id="eth-co-title">No active contract</div>
+                  <div class="co-timer" id="eth-co-timer">—</div>
+                </div>
+                <div class="chart-price-tag">
+                  <div class="price-val" id="eth-price-val">—</div>
+                  <div class="price-delta" id="eth-price-delta">—</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- DECISIONS FEED -->
+        <div id="decisions-col" class="panel">
+          <div class="panel-hdr">
+            <span class="title">Live Decisions</span>
+            <span class="pill" id="dec-count">0</span>
+            <span class="spacer"></span>
+          </div>
+          <div class="panel-body scrollable" id="dec-feed"></div>
+        </div>
+      </div>
+
+      <!-- ═══ ROW 3: 3-column bottom ═══ -->
+      <div id="row3">
+        <!-- WHALE FEED -->
+        <div class="panel">
+          <div class="panel-hdr">
+            <span class="title">Whale Feed</span>
+            <span class="pill" id="wf-count">0</span>
+            <span class="spacer"></span>
+          </div>
+          <div class="panel-body scrollable" id="whale-feed"></div>
+        </div>
+        <!-- OPEN POSITIONS -->
+        <div class="panel">
+          <div class="panel-hdr">
+            <span class="title">Open Positions</span>
+            <span class="pill" id="op-count">0</span>
+            <span class="spacer"></span>
+          </div>
+          <div class="panel-body scrollable">
+            <table class="pos-table">
+              <thead><tr>
+                <th>Asset</th><th>Side</th><th>Entry</th><th>Size</th><th>Age</th><th>PnL</th>
+              </tr></thead>
+              <tbody id="op-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <!-- CLOSED POSITIONS -->
+        <div class="panel">
+          <div class="panel-hdr">
+            <span class="title">Closed Positions</span>
+            <span class="pill" id="cp-count">0</span>
+            <span class="spacer"></span>
+          </div>
+          <div class="panel-body scrollable">
+            <table class="pos-table">
+              <thead><tr>
+                <th>Time</th><th>Asset</th><th>Side</th><th>PnL</th><th>Status</th><th>Dur</th>
+              </tr></thead>
+              <tbody id="cp-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ═══ SIDEBAR ═══ -->
+    <div id="sidebar" class="hidden">
+      <div class="sb-section">
+        <div class="sb-brand">WHALE COPIER <span>V2</span></div>
+        <div style="font-size:.68rem;color:var(--text-dim);margin-top:2px;">Strategy Configuration</div>
+      </div>
+      <div class="sb-section">
+        <div class="sb-title">Filter Parameters</div>
+        <div class="sb-field"><label>Min Whale Size ($)</label><input type="number" id="f-minWhaleSize" value="500"></div>
+        <div class="sb-field"><label>Require Momentum</label>
+          <div class="toggle-wrap"><input type="checkbox" id="f-requireMomentum"><label class="toggle-slider" for="f-requireMomentum"></label></div>
+        </div>
+        <div class="sb-field"><label>Min Edge</label><input type="number" id="f-minEdge" step="0.01" value="0.02"></div>
+        <div class="sb-field"><label>Max Edge</label><input type="number" id="f-maxEdge" step="0.01" value="0.50"></div>
+        <div class="sb-field"><label>Min Secs Remaining</label><input type="number" id="f-minSecsRemaining" value="60"></div>
+        <div class="sb-field"><label>Max Secs Remaining</label><input type="number" id="f-maxSecsRemaining" value="240"></div>
+        <div class="sb-field"><label>FOK Max Price</label><input type="number" id="f-fokMaxPrice" step="0.01" value="0.65"></div>
+        <div class="sb-field"><label>Bet Size ($)</label><input type="number" id="f-betSize" value="10"></div>
+        <div class="sb-field"><label>Max Total Risk ($)</label><input type="number" id="f-maxTotalRisk" value="100"></div>
+      </div>
+      <div class="sb-section">
+        <div class="sb-title">Blocked Wallets</div>
+        <textarea class="sb-blocked" id="f-blockedWallets" placeholder="One wallet per line..."></textarea>
+      </div>
+      <div class="sb-section">
+        <button class="sb-btn primary" onclick="applyFilter()">Apply Changes</button>
+        <button class="sb-btn" id="pause-btn" onclick="togglePause()" style="margin-top:6px;">Pause Bot</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ HEALTH BAR ═══ -->
+  <div id="health-bar">
+    <div class="health-item"><div id="h-binance" class="health-dot off"></div><span>Binance WS <span id="h-binance-ago">—</span></span></div>
+    <div class="health-item"><div id="h-poly" class="health-dot off"></div><span>Polymarket WS <span id="h-poly-ago">—</span></span></div>
+    <div class="health-item"><div id="h-whale" class="health-dot off"></div><span>Whale Monitor <span id="h-whale-polls">—</span></span></div>
+    <div class="health-item"><div id="h-pipeline" class="health-dot off"></div><span>Pipeline: <span id="h-pipeline-status">—</span></span></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  ROTHSTEIN V2 — Dashboard Controller
+// ═══════════════════════════════════════════════════════════════
+
+(function () {
+  'use strict';
+
+  // ── STATE ─────────────────────────────────────────────────
+  let state = null;
+  let ws = null;
+  let wsConnected = false;
+  let reconnectTimer = null;
+  let chartAnimId = null;
+
+  // Chart data buffers
+  const btcHistory = [];
+  const ethHistory = [];
+  const CHART_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+
+  // Wallet color map (deterministic hues)
+  const walletColors = {};
+  let walletColorIdx = 0;
+  const PALETTE = [
+    '#f59e0b','#22c55e','#3b82f6','#a855f7','#ec4899',
+    '#14b8a6','#f97316','#6366f1','#84cc16','#e879f9',
+    '#06b6d4','#eab308','#8b5cf6','#10b981','#f43f5e'
+  ];
+
+  function getWalletColor(label) {
+    if (!label) return '#6b6b80';
+    if (!walletColors[label]) {
+      walletColors[label] = PALETTE[walletColorIdx % PALETTE.length];
+      walletColorIdx++;
+    }
+    return walletColors[label];
+  }
+
+  // ── FORMATTERS ────────────────────────────────────────────
+  function fmtPrice(v, decimals) {
+    if (v == null || isNaN(v)) return '—';
+    decimals = decimals != null ? decimals : 4;
+    return Number(v).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  }
+  function fmtPnl(v) {
+    if (v == null || isNaN(v)) return '$0.00';
+    const s = v >= 0 ? '+' : '';
+    return s + '$' + Math.abs(v).toFixed(2);
+  }
+  function fmtPct(v) {
+    if (v == null || isNaN(v)) return '—';
+    const s = v >= 0 ? '+' : '';
+    return s + (v * 100).toFixed(2) + '%';
+  }
+  function fmtDelta(v) {
+    if (v == null || isNaN(v)) return { text: '—', cls: 'flat' };
+    const pct = (v * 100).toFixed(2);
+    if (v > 0) return { text: '+' + pct + '%', cls: 'pos' };
+    if (v < 0) return { text: pct + '%', cls: 'neg' };
+    return { text: '0.00%', cls: 'flat' };
+  }
+  function fmtTime(ts) {
+    if (!ts) return '—';
+    const d = new Date(ts);
+    return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+  function fmtCountdown(endTs) {
+    if (!endTs) return '—';
+    const diff = Math.max(0, endTs - Date.now());
+    const m = Math.floor(diff / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  }
+  function fmtUptime(uptimeMs) {
+    if (!uptimeMs) return '00:00:00';
+    const h = Math.floor(uptimeMs / 3600000);
+    const m = Math.floor((uptimeMs % 3600000) / 60000);
+    const s = Math.floor((uptimeMs % 60000) / 1000);
+    return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  }
+  function fmtAgo(ts) {
+    if (!ts) return '—';
+    const diff = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+    return diff + 's ago';
+  }
+  function fmtDollar(v) {
+    if (v == null || isNaN(v)) return '—';
+    return '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+  function shortWallet(w) {
+    if (!w) return '—';
+    if (w.length <= 10) return w;
+    return w.slice(0, 6) + '..' + w.slice(-4);
+  }
+
+  // ── DOM REFS ──────────────────────────────────────────────
+  const $ = (id) => document.getElementById(id);
+
+  // ── WEBSOCKET ─────────────────────────────────────────────
+  function connectWS() {
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+    const host = location.host || 'localhost:3000';
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(proto + '://' + host + '/ws');
+
+    ws.onopen = function () {
+      wsConnected = true;
+      updateConnStatus();
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    };
+    ws.onclose = function () {
+      wsConnected = false;
+      updateConnStatus();
+      scheduleReconnect();
+    };
+    ws.onerror = function () {
+      wsConnected = false;
+      updateConnStatus();
+    };
+    ws.onmessage = function (ev) {
+      try {
+        const data = JSON.parse(ev.data);
+        state = data;
+        onStateUpdate();
+      } catch (e) { /* ignore parse errors */ }
+    };
+  }
+
+  function scheduleReconnect() {
+    if (reconnectTimer) return;
+    reconnectTimer = setTimeout(function () {
+      reconnectTimer = null;
+      connectWS();
+    }, 2000);
+  }
+
+  function updateConnStatus() {
+    const dot = $('conn-dot');
+    const lbl = $('conn-label');
+    if (wsConnected) {
+      dot.className = 'conn-dot on';
+      lbl.textContent = 'CONNECTED';
+      lbl.style.color = 'var(--green)';
+    } else {
+      dot.className = 'conn-dot off';
+      lbl.textContent = 'DISCONNECTED';
+      lbl.style.color = 'var(--red)';
+    }
+  }
+
+  // ── STATE UPDATE ──────────────────────────────────────────
+  function onStateUpdate() {
+    if (!state) return;
+    updateHeader();
+    updateStats();
+    updateChartData();
+    updateDecisions();
+    updateWhaleFeed();
+    updateOpenPositions();
+    updateClosedPositions();
+    updateHealth();
+    updateSidebarFromState();
+  }
+
+  function updateHeader() {
+    // Mode badge
+    const mb = $('mode-badge');
+    if (state.mode === 'LIVE') { mb.className = 'badge badge-live'; mb.textContent = 'LIVE'; }
+    else { mb.className = 'badge badge-paper'; mb.textContent = 'PAPER'; }
+
+    // Paused
+    const pb = $('paused-badge');
+    pb.style.display = state.paused ? '' : 'none';
+
+    // BTC / ETH prices
+    $('hdr-btc-price').textContent = state.btcPrice ? fmtPrice(state.btcPrice, 2) : '—';
+    $('hdr-eth-price').textContent = state.ethPrice ? fmtPrice(state.ethPrice, 2) : '—';
+
+    const btcD = fmtDelta(state.btcDelta30s);
+    const ethD = fmtDelta(state.ethDelta30s);
+    const bdEl = $('hdr-btc-delta'); bdEl.textContent = btcD.text; bdEl.className = 'delta ' + btcD.cls;
+    const edEl = $('hdr-eth-delta'); edEl.textContent = ethD.text; edEl.className = 'delta ' + ethD.cls;
+
+    // Session timer
+    $('session-timer').textContent = fmtUptime(state.uptime);
+  }
+
+  function updateStats() {
+    const s = state.stats || {};
+    $('s-trades').textContent = s.trades || 0;
+    $('s-wins').textContent = s.wins || 0;
+    $('s-losses').textContent = s.losses || 0;
+    const total = (s.wins || 0) + (s.losses || 0);
+    const wr = total > 0 ? ((s.wins / total) * 100).toFixed(1) + '%' : '—';
+    $('s-winrate').textContent = wr;
+    const pnlEl = $('s-pnl');
+    const pnlVal = s.pnl || 0;
+    pnlEl.textContent = fmtPnl(pnlVal);
+    pnlEl.style.color = pnlVal >= 0 ? 'var(--green)' : 'var(--red)';
+    $('s-dd').textContent = '$' + Math.abs(s.maxDrawdown || 0).toFixed(2);
+    $('s-consec').textContent = s.consecutiveLosses || 0;
+  }
+
+  // ── CHART DATA ────────────────────────────────────────────
+  function updateChartData() {
+    // Merge incoming history into local buffers
+    mergeHistory(btcHistory, state.btcHistory);
+    mergeHistory(ethHistory, state.ethHistory);
+
+    // Add current prices as latest point
+    const now = Date.now();
+    if (state.btcPrice) pushPoint(btcHistory, now, state.btcPrice);
+    if (state.ethPrice) pushPoint(ethHistory, now, state.ethPrice);
+
+    // Trim old points
+    const cutoff = now - CHART_WINDOW_MS - 10000;
+    trimHistory(btcHistory, cutoff);
+    trimHistory(ethHistory, cutoff);
+
+    // Update chart header pills
+    $('btc-chart-price').textContent = state.btcPrice ? '$' + fmtPrice(state.btcPrice, 2) : '—';
+    $('eth-chart-price').textContent = state.ethPrice ? '$' + fmtPrice(state.ethPrice, 2) : '—';
+
+    // Update contract overlays
+    updateContractOverlay('BTC', state.btcPrice);
+    updateContractOverlay('ETH', state.ethPrice);
+  }
+
+  function mergeHistory(buf, incoming) {
+    if (!incoming || !incoming.length) return;
+    const lastTs = buf.length > 0 ? buf[buf.length - 1].ts : 0;
+    for (let i = 0; i < incoming.length; i++) {
+      const p = incoming[i];
+      if (p.ts > lastTs) buf.push({ ts: p.ts, price: p.price });
+    }
+  }
+  function pushPoint(buf, ts, price) {
+    if (buf.length > 0 && buf[buf.length - 1].ts === ts) {
+      buf[buf.length - 1].price = price;
+    } else {
+      buf.push({ ts: ts, price: price });
+    }
+  }
+  function trimHistory(buf, cutoff) {
+    while (buf.length > 0 && buf[0].ts < cutoff) buf.shift();
+  }
+
+  function getActiveContract(asset) {
+    if (!state || !state.activeContracts) return null;
+    return state.activeContracts.find(function (c) {
+      return c.asset && c.asset.toUpperCase() === asset.toUpperCase();
+    }) || null;
+  }
+
+  function updateContractOverlay(asset, curPrice) {
+    const prefix = asset.toLowerCase();
+    const contract = getActiveContract(asset);
+    if (contract) {
+      $(prefix + '-co-title').textContent = contract.title || 'Active contract';
+      $(prefix + '-co-timer').textContent = fmtCountdown(contract.endTs);
+      $(prefix + '-price-val').textContent = '$' + fmtPrice(curPrice, 2);
+      if (contract.strikePrice && curPrice) {
+        const diff = curPrice - contract.strikePrice;
+        const el = $(prefix + '-price-delta');
+        if (diff >= 0) {
+          el.textContent = '\u25B2$' + Math.abs(diff).toFixed(2);
+          el.style.color = 'var(--green)';
+        } else {
+          el.textContent = '\u25BC$' + Math.abs(diff).toFixed(2);
+          el.style.color = 'var(--red)';
+        }
+      }
+    } else {
+      $(prefix + '-co-title').textContent = 'No active contract';
+      $(prefix + '-co-timer').textContent = '—';
+      $(prefix + '-price-val').textContent = curPrice ? '$' + fmtPrice(curPrice, 2) : '—';
+      $(prefix + '-price-delta').textContent = '';
+    }
+  }
+
+  // ── CANVAS CHART RENDERER ─────────────────────────────────
+  function drawChart(canvasId, history, asset) {
+    const canvas = $(canvasId);
+    const parent = canvas.parentElement;
+    const dpr = window.devicePixelRatio || 1;
+    const w = parent.clientWidth;
+    const h = parent.clientHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    // Background
+    ctx.fillStyle = '#0d0d15';
+    ctx.fillRect(0, 0, w, h);
+
+    if (history.length < 2) {
+      ctx.fillStyle = '#2a2a3a';
+      ctx.font = '12px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Waiting for data...', w / 2, h / 2);
+      return;
+    }
+
+    const PAD_L = 2, PAD_R = 2, PAD_T = 30, PAD_B = 18;
+    const cw = w - PAD_L - PAD_R;
+    const ch = h - PAD_T - PAD_B;
+
+    const now = Date.now();
+    const tMin = now - CHART_WINDOW_MS;
+    const tMax = now;
+
+    // Price range
+    let pMin = Infinity, pMax = -Infinity;
+    for (let i = 0; i < history.length; i++) {
+      if (history[i].ts >= tMin) {
+        if (history[i].price < pMin) pMin = history[i].price;
+        if (history[i].price > pMax) pMax = history[i].price;
+      }
+    }
+
+    // Include strike price in range
+    const contract = getActiveContract(asset);
+    const strike = contract ? contract.strikePrice : null;
+    if (strike) {
+      if (strike < pMin) pMin = strike;
+      if (strike > pMax) pMax = strike;
+    }
+
+    // Add padding to range
+    const range = pMax - pMin || 1;
+    pMin -= range * 0.08;
+    pMax += range * 0.08;
+
+    function xOf(ts) { return PAD_L + ((ts - tMin) / (tMax - tMin)) * cw; }
+    function yOf(p) { return PAD_T + (1 - (p - pMin) / (pMax - pMin)) * ch; }
+
+    // Grid lines (horizontal)
+    const gridSteps = 5;
+    ctx.strokeStyle = 'rgba(255,255,255,.04)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([]);
+    for (let i = 0; i <= gridSteps; i++) {
+      const p = pMin + (pMax - pMin) * (i / gridSteps);
+      const y = yOf(p);
+      ctx.beginPath(); ctx.moveTo(PAD_L, y); ctx.lineTo(w - PAD_R, y); ctx.stroke();
+      // Price label
+      ctx.fillStyle = '#3a3a4a';
+      ctx.font = '9px JetBrains Mono, monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(fmtPrice(p, 2), w - PAD_R - 2, y - 3);
+    }
+
+    // Time labels
+    ctx.fillStyle = '#3a3a4a';
+    ctx.font = '9px JetBrains Mono, monospace';
+    ctx.textAlign = 'center';
+    for (let i = 0; i <= 5; i++) {
+      const t = tMin + (tMax - tMin) * (i / 5);
+      const x = xOf(t);
+      const d = new Date(t);
+      ctx.fillText(d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }), x, h - 4);
+    }
+
+    // Strike price dashed line
+    if (strike) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(245,158,11,.5)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 4]);
+      const sy = yOf(strike);
+      ctx.beginPath(); ctx.moveTo(PAD_L, sy); ctx.lineTo(w - PAD_R, sy); ctx.stroke();
+      ctx.restore();
+      // Label
+      ctx.fillStyle = 'rgba(245,158,11,.7)';
+      ctx.font = '9px JetBrains Mono, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('STRIKE $' + fmtPrice(strike, 2), PAD_L + 4, sy - 4);
+    }
+
+    // Filter points in window
+    const pts = [];
+    for (let i = 0; i < history.length; i++) {
+      if (history[i].ts >= tMin) pts.push(history[i]);
+    }
+    if (pts.length < 2) return;
+
+    // Determine color: green if last price >= strike, red otherwise
+    const lastPrice = pts[pts.length - 1].price;
+    const isAbove = strike ? lastPrice >= strike : true;
+    const lineColor = isAbove ? 'rgba(34,197,94,1)' : 'rgba(239,68,68,1)';
+    const fillTop = isAbove ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.12)';
+
+    // Draw filled area
+    ctx.beginPath();
+    ctx.moveTo(xOf(pts[0].ts), yOf(pts[0].price));
+    for (let i = 1; i < pts.length; i++) {
+      ctx.lineTo(xOf(pts[i].ts), yOf(pts[i].price));
+    }
+    ctx.lineTo(xOf(pts[pts.length - 1].ts), PAD_T + ch);
+    ctx.lineTo(xOf(pts[0].ts), PAD_T + ch);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, PAD_T, 0, PAD_T + ch);
+    grad.addColorStop(0, fillTop);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Draw line
+    ctx.beginPath();
+    ctx.moveTo(xOf(pts[0].ts), yOf(pts[0].price));
+    for (let i = 1; i < pts.length; i++) {
+      ctx.lineTo(xOf(pts[i].ts), yOf(pts[i].price));
+    }
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([]);
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+
+    // Glow dot at last point
+    const lastX = xOf(pts[pts.length - 1].ts);
+    const lastY = yOf(pts[pts.length - 1].price);
+    ctx.beginPath();
+    ctx.arc(lastX, lastY, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = lineColor;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(lastX, lastY, 7, 0, Math.PI * 2);
+    ctx.fillStyle = isAbove ? 'rgba(34,197,94,.2)' : 'rgba(239,68,68,.2)';
+    ctx.fill();
+  }
+
+  function renderCharts() {
+    drawChart('btc-canvas', btcHistory, 'BTC');
+    drawChart('eth-canvas', ethHistory, 'ETH');
+    chartAnimId = requestAnimationFrame(renderCharts);
+  }
+
+  // ── DECISIONS FEED ────────────────────────────────────────
+  let lastDecCount = 0;
+  function updateDecisions() {
+    const decs = state.recentDecisions || [];
+    $('dec-count').textContent = decs.length;
+    if (decs.length === lastDecCount) return;
+    lastDecCount = decs.length;
+
+    const feed = $('dec-feed');
+    const wasAtBottom = feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 30;
+
+    let html = '';
+    // Show newest first (reverse)
+    for (let i = decs.length - 1; i >= 0; i--) {
+      const d = decs[i];
+      const isCopy = d.action === 'COPY';
+      const wColor = getWalletColor(d.whaleLabel || d.whaleWallet);
+      const sideCls = (d.side === 'Up' || d.side === 'YES') ? 'c-green' : 'c-red';
+      const momentum = d.momentumAligned ? '\u2713' : '\u2717';
+      const momCls = d.momentumAligned ? 'c-green' : 'c-red';
+
+      html += '<div class="dec-row ' + (isCopy ? 'copy' : 'skip') + '">';
+      html += '<span class="dec-time">' + fmtTime(d.ts) + '</span>';
+      html += '<span class="dec-whale" style="background:' + wColor + '20;color:' + wColor + '">' + (d.whaleLabel || shortWallet(d.whaleWallet) || '—') + '</span>';
+      html += '<span class="dec-asset">' + (d.asset || '—') + '</span>';
+      html += '<span class="dec-side ' + sideCls + '">' + (d.side || '—') + '</span>';
+      html += '<span class="dec-action ' + (isCopy ? 'copy-act' : 'skip-act') + '">' + (d.action || '—') + '</span>';
+      html += '<span class="dec-meta">';
+      html += '<span class="tag">' + fmtDollar(d.whaleSize) + '</span>';
+      html += '<span class="tag">@' + fmtPrice(d.entryPrice, 4) + '</span>';
+      html += '<span class="tag">edge:' + (d.edgeVsSpot != null ? (d.edgeVsSpot * 100).toFixed(1) + '%' : '—') + '</span>';
+      html += '<span class="' + momCls + '">' + momentum + '</span> ';
+      html += '<span class="tag">' + (d.secsRemaining || '—') + 's</span> ';
+      if (d.reason) html += '<span class="c-dim">' + escHtml(d.reason) + '</span>';
+      html += '</span>';
+      html += '</div>';
+    }
+    feed.innerHTML = html;
+    if (wasAtBottom) feed.scrollTop = 0; // newest is at top
+  }
+
+  // ── WHALE FEED ────────────────────────────────────────────
+  let lastWfCount = 0;
+  function updateWhaleFeed() {
+    const signals = state.whaleSignals || [];
+    $('wf-count').textContent = signals.length;
+    if (signals.length === lastWfCount) return;
+    lastWfCount = signals.length;
+
+    const feed = $('whale-feed');
+    let html = '';
+    for (let i = signals.length - 1; i >= 0; i--) {
+      const s = signals[i];
+      const wColor = getWalletColor(s.walletLabel || s.wallet);
+      const isUp = s.side === 'Up' || s.outcome === 'Yes';
+      const sideCls = isUp ? 'c-green' : 'c-red';
+      const sideText = s.side || (s.outcome === 'Yes' ? 'Up' : 'Down');
+
+      html += '<div class="wf-row">';
+      html += '<span class="wf-time">' + fmtTime(s.ts || s.detectedAt) + '</span>';
+      html += '<span class="wf-wallet" style="background:' + wColor + '20;color:' + wColor + '">' + (s.walletLabel || shortWallet(s.wallet) || '—') + '</span>';
+      html += '<span class="wf-asset">' + (s.asset || '—') + '</span>';
+      html += '<span class="wf-side ' + sideCls + '">' + sideText + '</span>';
+      html += '<span class="wf-size">' + fmtDollar(s.usdcSize) + '</span>';
+      html += '<span class="wf-price">@' + fmtPrice(s.price, 4) + '</span>';
+      html += '</div>';
+    }
+    feed.innerHTML = html;
+  }
+
+  // ── OPEN POSITIONS ────────────────────────────────────────
+  function updateOpenPositions() {
+    const positions = state.openPositions || [];
+    $('op-count').textContent = positions.length;
+    const tbody = $('op-tbody');
+    let html = '';
+    const now = Date.now();
+    for (let i = 0; i < positions.length; i++) {
+      const p = positions[i];
+      const t = p.trade || {};
+      const age = t.ts ? Math.floor((now - t.ts) / 1000) : 0;
+      const timeLeft = t.endTs ? Math.max(0, Math.floor((t.endTs - now) / 1000)) : null;
+      const expiring = timeLeft !== null && timeLeft < 30;
+      const sideCls = (t.side === 'Up' || t.side === 'YES') ? 'c-green' : 'c-red';
+
+      // Estimate PnL (basic: shares * currentMidPrice - cost, or just use status if available)
+      const pnlEst = p.pnlEstimate != null ? p.pnlEstimate : 0;
+
+      html += '<tr class="' + (expiring ? 'expiring' : '') + '">';
+      html += '<td>' + (t.asset || '—') + '</td>';
+      html += '<td class="' + sideCls + '">' + (t.side || '—') + '</td>';
+      html += '<td>' + fmtPrice(t.entryPrice, 4) + '</td>';
+      html += '<td>' + fmtDollar(t.sizeUsd) + '</td>';
+      html += '<td>' + (timeLeft !== null ? timeLeft + 's' : age + 's') + '</td>';
+      html += '<td class="' + (pnlEst >= 0 ? 'c-green' : 'c-red') + '">' + fmtPnl(pnlEst) + '</td>';
+      html += '</tr>';
+    }
+    tbody.innerHTML = html;
+  }
+
+  // ── CLOSED POSITIONS ──────────────────────────────────────
+  function updateClosedPositions() {
+    const positions = state.closedPositions || [];
+    $('cp-count').textContent = positions.length;
+    const tbody = $('cp-tbody');
+    let html = '';
+    // Show most recent first
+    const sorted = positions.slice().sort(function (a, b) { return (b.closedAt || 0) - (a.closedAt || 0); });
+    const show = sorted.slice(0, 50);
+    for (let i = 0; i < show.length; i++) {
+      const p = show[i];
+      const t = p.trade || {};
+      const pnl = p.pnl || 0;
+      const won = p.resolution === 'WON' || pnl > 0;
+      const sideCls = (t.side === 'Up' || t.side === 'YES') ? 'c-green' : 'c-red';
+      const dur = (t.ts && p.closedAt) ? Math.floor((p.closedAt - t.ts) / 1000) + 's' : '—';
+
+      html += '<tr>';
+      html += '<td>' + fmtTime(p.closedAt) + '</td>';
+      html += '<td>' + (t.asset || '—') + '</td>';
+      html += '<td class="' + sideCls + '">' + (t.side || '—') + '</td>';
+      html += '<td class="' + (pnl >= 0 ? 'c-green' : 'c-red') + '">' + fmtPnl(pnl) + '</td>';
+      html += '<td>' + (won ? '<span class="won-badge">WON</span>' : '<span class="lost-badge">LOST</span>') + '</td>';
+      html += '<td>' + dur + '</td>';
+      html += '</tr>';
+    }
+    tbody.innerHTML = html;
+  }
+
+  // ── HEALTH BAR ────────────────────────────────────────────
+  function updateHealth() {
+    const h = state.health || {};
+    // Binance WS
+    const bws = h.binanceWs || {};
+    $('h-binance').className = 'health-dot ' + (bws.connected ? 'on' : 'off');
+    $('h-binance-ago').textContent = bws.lastUpdate ? fmtAgo(bws.lastUpdate) : '—';
+
+    // Polymarket WS
+    const pws = h.polymarketWs || {};
+    $('h-poly').className = 'health-dot ' + (pws.connected ? 'on' : 'off');
+    $('h-poly-ago').textContent = pws.lastUpdate ? fmtAgo(pws.lastUpdate) : '—';
+
+    // Whale Monitor
+    const wm = h.whaleMonitor || {};
+    $('h-whale').className = 'health-dot ' + (wm.active ? 'on' : 'off');
+    $('h-whale-polls').textContent = wm.polls ? wm.polls + ' polls' : '—';
+
+    // Pipeline
+    const paused = state.paused;
+    $('h-pipeline').className = 'health-dot ' + (paused ? 'off' : 'on');
+    $('h-pipeline-status').textContent = paused ? 'PAUSED' : 'ACTIVE';
+  }
+
+  // ── SIDEBAR ───────────────────────────────────────────────
+  let sidebarSynced = false;
+  function updateSidebarFromState() {
+    if (sidebarSynced || !state.filter) return;
+    sidebarSynced = true;
+    const f = state.filter;
+    if (f.minWhaleSize != null) $('f-minWhaleSize').value = f.minWhaleSize;
+    if (f.requireMomentum != null) $('f-requireMomentum').checked = !!f.requireMomentum;
+    if (f.minEdge != null) $('f-minEdge').value = f.minEdge;
+    if (f.maxEdge != null) $('f-maxEdge').value = f.maxEdge;
+    if (f.minSecsRemaining != null) $('f-minSecsRemaining').value = f.minSecsRemaining;
+    if (f.maxSecsRemaining != null) $('f-maxSecsRemaining').value = f.maxSecsRemaining;
+    if (f.fokMaxPrice != null) $('f-fokMaxPrice').value = f.fokMaxPrice;
+    if (f.betSize != null) $('f-betSize').value = f.betSize;
+    if (f.maxTotalRisk != null) $('f-maxTotalRisk').value = f.maxTotalRisk;
+    if (f.blockedWallets && f.blockedWallets.length) {
+      $('f-blockedWallets').value = f.blockedWallets.join('\n');
+    }
+    updatePauseBtn();
+  }
+
+  function updatePauseBtn() {
+    const btn = $('pause-btn');
+    if (state && state.paused) {
+      btn.textContent = 'Resume Bot';
+      btn.className = 'sb-btn success';
+    } else {
+      btn.textContent = 'Pause Bot';
+      btn.className = 'sb-btn danger';
+    }
+  }
+
+  window.toggleSidebar = function () {
+    $('sidebar').classList.toggle('hidden');
+  };
+
+  window.applyFilter = function () {
+    const filter = {
+      minWhaleSize: parseFloat($('f-minWhaleSize').value) || 0,
+      requireMomentum: $('f-requireMomentum').checked,
+      minEdge: parseFloat($('f-minEdge').value) || 0,
+      maxEdge: parseFloat($('f-maxEdge').value) || 1,
+      minSecsRemaining: parseInt($('f-minSecsRemaining').value) || 0,
+      maxSecsRemaining: parseInt($('f-maxSecsRemaining').value) || 300,
+      fokMaxPrice: parseFloat($('f-fokMaxPrice').value) || 0.65,
+      betSize: parseFloat($('f-betSize').value) || 10,
+      maxTotalRisk: parseFloat($('f-maxTotalRisk').value) || 100,
+      blockedWallets: $('f-blockedWallets').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean)
+    };
+    const host = location.origin || 'http://localhost:3000';
+    fetch(host + '/api/filter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(filter)
+    }).then(function (res) {
+      if (res.ok) {
+        sidebarSynced = false; // re-sync on next update
+      }
+    }).catch(function (e) {
+      console.error('Failed to apply filter:', e);
+    });
+  };
+
+  window.togglePause = function () {
+    const host = location.origin || 'http://localhost:3000';
+    const newPaused = !(state && state.paused);
+    fetch(host + '/api/filter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paused: newPaused })
+    }).then(function (res) {
+      if (res.ok && state) {
+        state.paused = newPaused;
+        updatePauseBtn();
+      }
+    }).catch(function (e) {
+      console.error('Failed to toggle pause:', e);
+    });
+  };
+
+  // ── UTIL ──────────────────────────────────────────────────
+  function escHtml(s) {
+    if (!s) return '';
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // ── DEMO DATA (for visual testing without WS) ─────────────
+  function generateDemoState() {
+    const now = Date.now();
+    const btcBase = 87420 + Math.random() * 200;
+    const ethBase = 2150 + Math.random() * 20;
+
+    // Build history
+    if (btcHistory.length === 0) {
+      for (let i = 300; i >= 0; i--) {
+        btcHistory.push({ ts: now - i * 1000, price: btcBase + Math.sin(i / 20) * 80 + Math.random() * 30 });
+        ethHistory.push({ ts: now - i * 1000, price: ethBase + Math.sin(i / 15) * 12 + Math.random() * 5 });
+      }
+    } else {
+      btcHistory.push({ ts: now, price: btcBase + Math.sin(now / 5000) * 60 + Math.random() * 20 });
+      ethHistory.push({ ts: now, price: ethBase + Math.sin(now / 4000) * 8 + Math.random() * 3 });
+      trimHistory(btcHistory, now - CHART_WINDOW_MS - 10000);
+      trimHistory(ethHistory, now - CHART_WINDOW_MS - 10000);
+    }
+
+    const wallets = ['Whale_Alpha', 'DeepSea_7', 'MegaBuyer', 'SilentShark', 'CryptoKing42'];
+    const sides = ['Up', 'Down'];
+
+    return {
+      mode: 'PAPER',
+      uptime: now - (now - 3723000),
+      paused: false,
+      btcPrice: btcHistory[btcHistory.length - 1].price,
+      ethPrice: ethHistory[ethHistory.length - 1].price,
+      btcDelta30s: (Math.random() - 0.5) * 0.002,
+      ethDelta30s: (Math.random() - 0.5) * 0.003,
+      btcHistory: [],
+      ethHistory: [],
+      activeContracts: [
+        { conditionId: 'btc1', title: 'BTC 5-min Up/Down $87,500', endTs: now + 180000, windowStartTs: now - 120000, asset: 'BTC', strikePrice: btcBase - 20, clobTokenIds: [], outcomes: [] },
+        { conditionId: 'eth1', title: 'ETH 5-min Up/Down $2,155', endTs: now + 210000, windowStartTs: now - 90000, asset: 'ETH', strikePrice: ethBase + 5, clobTokenIds: [], outcomes: [] }
+      ],
+      recentDecisions: Array.from({ length: 15 }, function (_, i) {
+        const isCopy = Math.random() > 0.5;
+        return {
+          ts: now - i * 4000,
+          asset: Math.random() > 0.5 ? 'BTC' : 'ETH',
+          side: sides[Math.floor(Math.random() * 2)],
+          action: isCopy ? 'COPY' : 'SKIP',
+          reason: isCopy ? 'Strong edge + momentum aligned' : ['Whale size too small', 'No momentum', 'Edge below min', 'Too close to expiry'][Math.floor(Math.random() * 4)],
+          whaleWallet: '0x' + Math.random().toString(16).slice(2, 14),
+          whaleLabel: wallets[Math.floor(Math.random() * wallets.length)],
+          whaleSize: 500 + Math.floor(Math.random() * 9500),
+          entryPrice: 0.4 + Math.random() * 0.25,
+          edgeVsSpot: (Math.random() - 0.3) * 0.1,
+          secsRemaining: 30 + Math.floor(Math.random() * 240),
+          momentumAligned: Math.random() > 0.4
+        };
+      }),
+      whaleSignals: Array.from({ length: 12 }, function (_, i) {
+        return {
+          ts: now - i * 5000,
+          wallet: '0x' + Math.random().toString(16).slice(2, 14),
+          walletLabel: wallets[Math.floor(Math.random() * wallets.length)],
+          side: sides[Math.floor(Math.random() * 2)],
+          price: 0.4 + Math.random() * 0.25,
+          usdcSize: 500 + Math.floor(Math.random() * 15000),
+          asset: Math.random() > 0.5 ? 'BTC' : 'ETH'
+        };
+      }),
+      openPositions: Array.from({ length: 3 }, function (_, i) {
+        return {
+          trade: {
+            id: 'T' + (1000 + i),
+            ts: now - (60 + i * 30) * 1000,
+            asset: i === 0 ? 'BTC' : 'ETH',
+            side: sides[i % 2],
+            entryPrice: 0.45 + Math.random() * 0.15,
+            sizeUsd: 10,
+            shares: 18 + Math.random() * 10,
+            whaleLabel: wallets[i],
+            endTs: now + (60 + i * 60) * 1000,
+            strikePrice: i === 0 ? btcBase : ethBase
+          },
+          status: 'open',
+          pnlEstimate: (Math.random() - 0.4) * 5
+        };
+      }),
+      closedPositions: Array.from({ length: 8 }, function (_, i) {
+        const won = Math.random() > 0.45;
+        return {
+          trade: {
+            id: 'T' + (900 + i),
+            ts: now - (300 + i * 300) * 1000,
+            asset: Math.random() > 0.5 ? 'BTC' : 'ETH',
+            side: sides[Math.floor(Math.random() * 2)],
+            entryPrice: 0.4 + Math.random() * 0.2,
+            sizeUsd: 10
+          },
+          status: 'closed',
+          closedAt: now - (200 + i * 300) * 1000,
+          pnl: won ? 5 + Math.random() * 15 : -(5 + Math.random() * 10),
+          resolution: won ? 'WON' : 'LOST'
+        };
+      }),
+      stats: {
+        trades: 42,
+        wins: 24,
+        losses: 18,
+        pnl: 87.32,
+        maxDrawdown: -22.50,
+        peakPnl: 110.00,
+        consecutiveLosses: 2,
+        startedAt: now - 3723000
+      },
+      health: {
+        binanceWs: { connected: true, lastUpdate: now - 500 },
+        polymarketWs: { connected: true, lastUpdate: now - 1200 },
+        whaleMonitor: { active: true, lastPoll: now - 3000, polls: 847 }
+      },
+      filter: {
+        blockedWallets: [],
+        minWhaleSize: 500,
+        requireMomentum: true,
+        minEdge: 0.02,
+        maxEdge: 0.50,
+        minSecsRemaining: 60,
+        maxSecsRemaining: 240,
+        fokMaxPrice: 0.65,
+        maxPositionsPerContract: 2,
+        maxTotalRisk: 100,
+        betSize: 10,
+        paused: false
+      }
+    };
+  }
+
+  // ── INIT ──────────────────────────────────────────────────
+  function init() {
+    connectWS();
+    renderCharts();
+
+    // If no WS data after 3s, show demo
+    setTimeout(function () {
+      if (!state) {
+        console.log('[ROTHSTEIN] No WS connection, showing demo data');
+        state = generateDemoState();
+        onStateUpdate();
+        // Keep updating demo
+        setInterval(function () {
+          if (!wsConnected) {
+            state = generateDemoState();
+            // Increment demo decisions occasionally
+            if (Math.random() > 0.7) {
+              const wallets = ['Whale_Alpha', 'DeepSea_7', 'MegaBuyer', 'SilentShark', 'CryptoKing42'];
+              state.recentDecisions.unshift({
+                ts: Date.now(),
+                asset: Math.random() > 0.5 ? 'BTC' : 'ETH',
+                side: Math.random() > 0.5 ? 'Up' : 'Down',
+                action: Math.random() > 0.5 ? 'COPY' : 'SKIP',
+                reason: Math.random() > 0.5 ? 'Strong edge' : 'Size below min',
+                whaleWallet: '0x' + Math.random().toString(16).slice(2, 14),
+                whaleLabel: wallets[Math.floor(Math.random() * wallets.length)],
+                whaleSize: 500 + Math.floor(Math.random() * 9500),
+                entryPrice: 0.4 + Math.random() * 0.25,
+                edgeVsSpot: (Math.random() - 0.3) * 0.1,
+                secsRemaining: 30 + Math.floor(Math.random() * 240),
+                momentumAligned: Math.random() > 0.4
+              });
+              lastDecCount = 0;
+              lastWfCount = 0;
+            }
+            onStateUpdate();
+          }
+        }, 1000);
+      }
+    }, 3000);
+  }
+
+  // Wait for DOM
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+})();
+</script>
+</body>
+</html>

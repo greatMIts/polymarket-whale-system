@@ -16,3 +16,7 @@ bot/dist/
 # GP bot OG backup (runtime)
 GP bot OG/data/
 GP bot OG/dist/
+
+# ROTHSTEIN V2 (runtime)
+ROTHSTEIN-V2/data/
+ROTHSTEIN-V2/dist/
