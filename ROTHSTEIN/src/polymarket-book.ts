@@ -195,9 +195,9 @@ export function connect(): void {
 // ─── REST Book Fallback ─────────────────────────────────────────────────────
 
 export async function fetchBookRest(tokenId: string): Promise<BookState> {
-  // Rate-limit: don't re-fetch same token within 10s
+  // Rate-limit: don't re-fetch same token within 5s
   const lastFetch = restFetchTimes.get(tokenId) || 0;
-  if (Date.now() - lastFetch < 10_000) {
+  if (Date.now() - lastFetch < 5_000) {
     return books.get(tokenId) || { bid: 0, ask: 0, mid: 0, spread: 0, lastUpdate: 0 };
   }
   restFetchTimes.set(tokenId, Date.now());
@@ -234,24 +234,32 @@ export async function fetchBookRest(tokenId: string): Promise<BookState> {
   return books.get(tokenId) || { bid: 0, ask: 0, mid: 0, spread: 0, lastUpdate: 0 };
 }
 
-// Periodically refresh empty books
-export async function refreshEmptyBooks(): Promise<void> {
-  const emptyTokens: string[] = [];
-  for (const [tokenId, book] of books) {
-    if (book.ask === 0 || book.bid === 0) emptyTokens.push(tokenId);
-  }
-  if (emptyTokens.length === 0) return;
+// Periodically refresh empty AND stale books via REST.
+// For 5-minute binary options, book data must be fresh — WS may not send
+// frequent updates for thin markets, causing the ask to get stuck at 0.50.
+const STALE_BOOK_MS = 15_000;  // refresh any book not updated in 15s
 
-  const batch = emptyTokens.slice(0, 10);  // max 10 at a time
-  let filled = 0;
+export async function refreshEmptyBooks(): Promise<void> {
+  const now = Date.now();
+  const needsRefresh: string[] = [];
+
+  for (const [tokenId, book] of books) {
+    const isEmpty = book.ask === 0 || book.bid === 0;
+    const isStale = (now - book.lastUpdate) > STALE_BOOK_MS;
+    if (isEmpty || isStale) needsRefresh.push(tokenId);
+  }
+  if (needsRefresh.length === 0) return;
+
+  const batch = needsRefresh.slice(0, 10);  // max 10 at a time
+  let refreshed = 0;
   for (const tokenId of batch) {
     const book = await fetchBookRest(tokenId);
-    if (book.ask > 0 && book.bid > 0) filled++;
+    if (book.ask > 0 && book.bid > 0) refreshed++;
     await new Promise(r => setTimeout(r, 200));  // rate limit
   }
 
-  if (filled > 0) {
-    logger.debug("polybook", `REST filled ${filled}/${batch.length} empty books`);
+  if (refreshed > 0) {
+    logger.debug("polybook", `REST refreshed ${refreshed}/${batch.length} books (${needsRefresh.length} stale/empty total)`);
   }
 }
 

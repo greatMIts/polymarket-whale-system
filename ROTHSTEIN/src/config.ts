@@ -44,7 +44,7 @@ export const CONFIG = {
   resolutionCheckMs: 5_000,       // check if open positions resolved (was 30s, reduced for faster dashboard updates)
   contractScanMs: 10_000,         // scan Gamma for new contracts (was 30s, reduced for faster discovery)
   heartbeatCheckMs: 10_000,       // subsystem health check
-  bookRefreshMs: 15_000,          // refresh empty order books via REST
+  bookRefreshMs: 5_000,           // refresh stale/empty order books via REST (5-min contracts need fresh data)
   dashboardBroadcastMs: 500,      // WS broadcast to dashboard
 
   // Staleness thresholds
