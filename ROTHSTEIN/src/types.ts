@@ -293,7 +293,6 @@ export interface RuntimeConfig {
   conditionalTpMinPrice: number;    // default 0.85
   conditionalTpEdgeThreshold: number;  // default 0
 
-  // Whale signal aggregation
-  minAggregatedSize: number;        // default 20 — accumulate whale trades per contract until this total is reached
-  aggregationWindowMs: number;      // default 60000 — time window for accumulation (ms)
+  // Whale signal minimum size
+  minWhaleSizeUsd: number;          // default 3 — minimum individual whale trade size to evaluate
 }

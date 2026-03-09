@@ -238,6 +238,8 @@ export function start(): void {
       if (b.maxTotalAtRisk !== undefined) updates.maxTotalAtRisk = Math.max(5, Math.min(500, Number(b.maxTotalAtRisk)));
       // Sizing — flat bet, no tiers
       if (b.betSizeUsdc !== undefined) updates.betSizeUsdc = Math.max(1, Math.min(1000, Number(b.betSizeUsdc)));
+      // Whale minimum trade size
+      if (b.minWhaleSizeUsd !== undefined) updates.minWhaleSizeUsd = Math.max(0.5, Math.min(100, Number(b.minWhaleSizeUsd)));
 
       // Sizing tiers
       if (b.sizingTier1Score !== undefined) updates.sizingTier1Score = Math.max(50, Math.min(100, Number(b.sizingTier1Score)));

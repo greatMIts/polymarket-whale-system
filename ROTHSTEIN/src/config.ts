@@ -150,9 +150,8 @@ const DEFAULT_RUNTIME: RuntimeConfig = {
   conditionalTpMinPrice: CONFIG.conditionalTpMinPrice,
   conditionalTpEdgeThreshold: CONFIG.conditionalTpEdgeThreshold,
 
-  // Whale signal aggregation
-  minAggregatedSize: 20,           // accumulate whale trades per contract until $20 total
-  aggregationWindowMs: 60_000,     // 60s window for accumulation
+  // Whale signal minimum size
+  minWhaleSizeUsd: 3,              // minimum individual whale trade size to evaluate (no aggregation)
 };
 
 let _runtime: RuntimeConfig = { ...DEFAULT_RUNTIME };

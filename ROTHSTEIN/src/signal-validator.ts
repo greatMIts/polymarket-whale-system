@@ -31,10 +31,9 @@ export function validateWhaleSignal(
     return { pass: false, rejectReason: "BLOCKED_WALLET" };
   }
 
-  // Gate 2: Minimum aggregated size ($20 USD)
-  // Signal arrives pre-aggregated from signal-aggregator.ts
-  // This is a safety net — aggregator already enforces threshold
-  if (signal.usdcSize < runtime.minAggregatedSize) {
+  // Gate 2: Minimum whale trade size ($3 USD)
+  // Every individual whale trade is evaluated — filter out dust/noise
+  if (signal.usdcSize < runtime.minWhaleSizeUsd) {
     return { pass: false, rejectReason: "SIZE_TOO_SMALL" };
   }
 
