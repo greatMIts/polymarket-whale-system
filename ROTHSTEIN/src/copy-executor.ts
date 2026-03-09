@@ -118,9 +118,10 @@ export async function executeCopy(
   };
 
   // 5. Place order (live mode only)
+  // Pass whale's price — executeLiveOrder adds +8¢ slippage for the GTC limit
   let orderId: string | undefined;
   if (isLive) {
-    orderId = await executeLiveOrder(tokenId, signal.side, sizeUsd, effectiveAsk);
+    orderId = await executeLiveOrder(tokenId, signal.side, sizeUsd, signal.price);
   }
 
   // 6. Build TradeExecution
@@ -168,37 +169,35 @@ export async function executeCopy(
 }
 
 // ─── Live Order Execution ───────────────────────────────────────────────────
-// Places a real FOK market order via Polymarket's CLOB SDK.
-// Always BUY — we copy the whale's position on the same outcome token.
+// Places a GTC limit order via Polymarket's CLOB SDK.
+// Limit price = whale price + 8¢ max slippage.
+// GTC sits on the book and fills as liquidity arrives — no FOK kill problem.
+
+const MAX_BUY_SLIPPAGE = 0.08;   // max 8¢ above whale price
 
 async function executeLiveOrder(
   tokenId: string,
   side: string,
   sizeUsd: number,
-  limitPrice: number
+  whalePrice: number
 ): Promise<string | undefined> {
   const client = clobClient.getClient();
   const startMs = Date.now();
 
-  // FOK market order: spend $sizeUsd buying tokens, limitPrice = worst acceptable price
-  // Let SDK auto-resolve negRisk and tickSize from CLOB API.
-  // Hardcoding negRisk causes "invalid signature" if market uses neg-risk exchange.
-  //
-  // SLIPPAGE: Add 3¢ tolerance above ask to sweep through thin book levels.
-  // FOK requires the ENTIRE order to fill — if the ask only has 5 shares and we want 20,
-  // we need to reach into the next price levels. Cap at 0.99 to avoid overpaying.
-  const slippedPrice = Math.min(limitPrice + 0.03, 0.99);
-  logger.debug("copy-executor", `BUY limit: ask=${limitPrice.toFixed(4)} → slipped=${slippedPrice.toFixed(4)} (+3¢)`);
+  // GTC limit order: whale price + 8¢ max slippage, capped at 0.95
+  const limitPrice = Math.min(whalePrice + MAX_BUY_SLIPPAGE, 0.95);
+  const shares = sizeUsd / limitPrice;
+  logger.info("copy-executor", `BUY GTC: whale=${whalePrice.toFixed(4)} limit=${limitPrice.toFixed(4)} (+${MAX_BUY_SLIPPAGE}) size=$${sizeUsd} shares=${shares.toFixed(2)}`);
 
-  const response = await client.createAndPostMarketOrder(
+  const response = await client.createAndPostOrder(
     {
       tokenID: tokenId,
-      amount: sizeUsd,
+      price: limitPrice,
       side: clobClient.Side.BUY,
-      price: slippedPrice,
+      size: shares,
     },
     {} as any,  // SDK auto-resolves tickSize + negRisk per token
-    clobClient.OrderType.FOK,
+    clobClient.OrderType.GTC,
   );
 
   const latencyMs = Date.now() - startMs;
@@ -207,17 +206,18 @@ async function executeLiveOrder(
   logger.debug("copy-executor", `CLOB response (${latencyMs}ms): ${JSON.stringify(response)}`);
 
   if (!response || !response.success) {
-    // SDK error responses may use `errorMsg`, `error`, or be shaped differently
     const errMsg = response?.errorMsg || response?.error || response?.status || JSON.stringify(response);
     throw new Error(`ORDER_REJECTED: ${errMsg}`);
   }
 
-  logger.event("copy-executor", "LIVE_ORDER_FILLED", {
+  logger.event("copy-executor", "LIVE_ORDER_PLACED", {
     orderId: response.orderID,
     status: response.status,
     side,
-    amount: sizeUsd,
-    price: limitPrice,
+    sizeUsd,
+    whalePrice,
+    limitPrice,
+    shares: shares.toFixed(4),
     latencyMs,
   });
 
@@ -225,32 +225,33 @@ async function executeLiveOrder(
 }
 
 // ─── Live SELL Order (for TP exits) ──────────────────────────────────────────
-// Places a real FOK market SELL order to close an open position.
-// For SELL orders, amount = number of shares (not USD).
+// Places a GTC limit SELL order to close an open position.
+// Limit price = current bid - 8¢ slippage (willing to accept less for guaranteed fill).
+
+const MAX_SELL_SLIPPAGE = 0.08;   // max 8¢ below bid for TP exits
 
 export async function executeLiveSell(
   tokenId: string,
   shares: number,
-  limitPrice: number
+  bidPrice: number
 ): Promise<string | undefined> {
   const client = clobClient.getClient();
   const startMs = Date.now();
 
   try {
-    // SLIPPAGE: Subtract 3¢ from bid to sweep through thin book levels for SELL.
-    // FOK requires full fill — need to reach into lower bid levels. Floor at 0.01.
-    const slippedPrice = Math.max(limitPrice - 0.03, 0.01);
-    logger.debug("copy-executor", `SELL limit: bid=${limitPrice.toFixed(4)} → slipped=${slippedPrice.toFixed(4)} (-3¢)`);
+    // GTC limit sell: bid - 8¢ slippage, floored at 0.01
+    const limitPrice = Math.max(bidPrice - MAX_SELL_SLIPPAGE, 0.01);
+    logger.info("copy-executor", `SELL GTC: bid=${bidPrice.toFixed(4)} limit=${limitPrice.toFixed(4)} (-${MAX_SELL_SLIPPAGE}) shares=${shares.toFixed(2)}`);
 
-    const response = await client.createAndPostMarketOrder(
+    const response = await client.createAndPostOrder(
       {
         tokenID: tokenId,
-        amount: shares,
+        price: limitPrice,
         side: clobClient.Side.SELL,
-        price: slippedPrice,
+        size: shares,
       },
       {} as any,  // SDK auto-resolves tickSize + negRisk per token
-      clobClient.OrderType.FOK,
+      clobClient.OrderType.GTC,
     );
 
     const latencyMs = Date.now() - startMs;
@@ -262,11 +263,12 @@ export async function executeLiveSell(
       return undefined;
     }
 
-    logger.event("copy-executor", "LIVE_SELL_FILLED", {
+    logger.event("copy-executor", "LIVE_SELL_PLACED", {
       orderId: response.orderID,
       status: response.status,
-      shares,
-      price: limitPrice,
+      shares: shares.toFixed(4),
+      bidPrice,
+      limitPrice,
       latencyMs,
     });
 
