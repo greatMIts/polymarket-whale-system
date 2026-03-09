@@ -177,6 +177,8 @@ async function executeLiveOrder(
   const startMs = Date.now();
 
   // FOK market order: spend $sizeUsd buying tokens, limitPrice = worst acceptable price
+  // Let SDK auto-resolve negRisk and tickSize from CLOB API.
+  // Hardcoding negRisk causes "invalid signature" if market uses neg-risk exchange.
   const response = await client.createAndPostMarketOrder(
     {
       tokenID: tokenId,
@@ -184,10 +186,7 @@ async function executeLiveOrder(
       side: clobClient.Side.BUY,
       price: limitPrice,
     },
-    {
-      tickSize: "0.01",
-      negRisk: false,  // 2-outcome binary options
-    },
+    {} as any,  // SDK auto-resolves tickSize + negRisk per token
     clobClient.OrderType.FOK,
   );
 
@@ -212,6 +211,54 @@ async function executeLiveOrder(
   });
 
   return response.orderID;
+}
+
+// ─── Live SELL Order (for TP exits) ──────────────────────────────────────────
+// Places a real FOK market SELL order to close an open position.
+// For SELL orders, amount = number of shares (not USD).
+
+export async function executeLiveSell(
+  tokenId: string,
+  shares: number,
+  limitPrice: number
+): Promise<string | undefined> {
+  const client = clobClient.getClient();
+  const startMs = Date.now();
+
+  try {
+    const response = await client.createAndPostMarketOrder(
+      {
+        tokenID: tokenId,
+        amount: shares,
+        side: clobClient.Side.SELL,
+        price: limitPrice,
+      },
+      {} as any,  // SDK auto-resolves tickSize + negRisk per token
+      clobClient.OrderType.FOK,
+    );
+
+    const latencyMs = Date.now() - startMs;
+    logger.debug("copy-executor", `SELL response (${latencyMs}ms): ${JSON.stringify(response)}`);
+
+    if (!response || !response.success) {
+      const errMsg = response?.errorMsg || response?.error || response?.status || JSON.stringify(response);
+      logger.error("copy-executor", `SELL_REJECTED: ${errMsg}`);
+      return undefined;
+    }
+
+    logger.event("copy-executor", "LIVE_SELL_FILLED", {
+      orderId: response.orderID,
+      status: response.status,
+      shares,
+      price: limitPrice,
+      latencyMs,
+    });
+
+    return response.orderID;
+  } catch (e: any) {
+    logger.error("copy-executor", `SELL_ERROR: ${e.message}`);
+    return undefined;
+  }
 }
 
 // ─── CLOB Keep-Alive Ping ────────────────────────────────────────────────────

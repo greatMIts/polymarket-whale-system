@@ -13,6 +13,7 @@ import * as polyBook from "./polymarket-book";
 import * as pricing from "./pricing";
 import * as binance from "./binance-feed";
 import { backfillResolution } from "./decisions-log";
+import { executeLiveSell } from "./copy-executor";
 import axios from "axios";
 
 // ─── State ──────────────────────────────────────────────────────────────────
@@ -224,7 +225,26 @@ export async function checkConditionalTp(): Promise<void> {
         currentMarketPrice,
         currentEdge: currentEdge.toFixed(4),
         estimatedPnl: exitPnl.toFixed(4),
+        mode: CONFIG.mode,
       });
+
+      // In LIVE mode, actually sell the tokens via CLOB before resolving
+      if (CONFIG.mode === "LIVE") {
+        try {
+          // SELL order: amount = shares, price = current bid (worst acceptable sell price)
+          const sellPrice = book.bid > 0 ? book.bid : currentMarketPrice * 0.95;
+          const orderId = await executeLiveSell(tokenId, pos.trade.shares, sellPrice);
+          if (orderId) {
+            logger.event("positions", "TP_SELL_SUCCESS", { id, orderId, shares: pos.trade.shares, price: sellPrice });
+          } else {
+            logger.warn("positions", `TP_SELL_FAILED for ${id} — position will resolve at expiry instead`);
+            continue;  // Don't resolve if sell failed — let it resolve naturally at expiry
+          }
+        } catch (e: any) {
+          logger.error("positions", `TP_SELL_ERROR for ${id}: ${e.message}`);
+          continue;  // Don't resolve if sell threw — let it resolve naturally at expiry
+        }
+      }
 
       resolvePosition(id, "EXITED_TP", true, currentMarketPrice);
     }
