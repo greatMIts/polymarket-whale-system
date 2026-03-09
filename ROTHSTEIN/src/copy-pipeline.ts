@@ -1,8 +1,9 @@
 // ─── Layer 4: Copy Pipeline ──────────────────────────────────────────────────
 // Event-driven whale copy pipeline. Replaces the 1s scan loop from scanner.ts.
 //
-// Flow: whale-monitor emits 'whale-trade' → pipeline validates → features →
-//       score → risk checks → execute → open position
+// Flow: whale-monitor emits 'whale-trade' → aggregator accumulates per contract →
+//       aggregator emits 'aggregated-signal' at $20 threshold →
+//       pipeline validates → features → score → risk checks → execute → open position
 //
 // All bugs from v1-v4 adversarial reviews are addressed:
 //   Bug #5 v1:  Execution mutex (pendingExecutions counter)
@@ -18,6 +19,7 @@ import { WhaleSignal, ContractInfo, Side } from "./types";
 import { CONFIG, getRuntime } from "./config";
 import { logger } from "./logger";
 import * as whaleMonitor from "./whale-monitor";
+import * as signalAggregator from "./signal-aggregator";
 import * as contractScanner from "./contract-scanner";
 import * as polyBook from "./polymarket-book";
 import { buildFeatureVector } from "./features";
@@ -46,18 +48,28 @@ export function start(): void {
   if (started) return;
   started = true;
 
+  // Start signal aggregator
+  signalAggregator.start();
+
+  // Whale trades → aggregator (accumulates per contract:side)
   whaleMonitor.on("whale-trade", (signal: WhaleSignal) => {
+    signalAggregator.ingest(signal);
+  });
+
+  // Aggregated signals → pipeline (only fires when threshold reached, e.g. $20)
+  signalAggregator.on("aggregated-signal", (signal: WhaleSignal) => {
     handleWhaleTrade(signal).catch(e => {
       logger.error("pipeline", `Unhandled pipeline error: ${e.message}`);
     });
   });
 
-  logger.info("pipeline", "Copy pipeline started — listening for whale-trade events");
+  const runtime = getRuntime();
+  logger.info("pipeline", `Copy pipeline started — aggregating whale trades (threshold: $${runtime.minAggregatedSize})`);
 }
 
 export function stop(): void {
   started = false;
-  // EventEmitter listeners persist but will be ignored when started=false
+  signalAggregator.stop();
   logger.info("pipeline", "Copy pipeline stopped");
 }
 
