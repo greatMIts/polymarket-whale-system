@@ -40,13 +40,16 @@ export async function initClobClient(): Promise<void> {
   logger.info("clob-client", `API key derived: ${apiCreds.key.substring(0, 8)}...`);
 
   // Step 2: Initialize full L2 trading client
-  // Signature type 2 = GNOSIS_SAFE (Polymarket proxy wallet)
+  // Signature type: 0=EOA, 1=POLY_PROXY(Magic/Email), 2=GNOSIS_SAFE
+  // Default to 1 (Magic/Email login) per SDK README — most Polymarket accounts use this.
+  const sigType = CONFIG.polySignatureType;
+  logger.info("clob-client", `Signature type: ${sigType} (0=EOA, 1=MagicLink, 2=GnosisSafe)`);
   client = new ClobClient(
     CONFIG.clobApi,
     137,  // Polygon mainnet
     signer,
     apiCreds,
-    2,    // GNOSIS_SAFE signature type
+    sigType,
     CONFIG.polyWalletAddress,
   );
 

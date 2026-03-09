@@ -97,6 +97,7 @@ export const CONFIG = {
   polyApiSecret: process.env.POLY_API_SECRET || "",
   polyPassphrase: process.env.POLY_PASSPHRASE || "",
   polyWalletAddress: process.env.POLY_WALLET_ADDRESS || "",
+  polySignatureType: parseInt(process.env.POLY_SIGNATURE_TYPE || "1"),  // 0=EOA, 1=Magic/Email(default), 2=GnosisSafe
   polyPrivateKey: process.env.POLY_PRIVATE_KEY || "",
 
   // Wallet tiers for whale signals
