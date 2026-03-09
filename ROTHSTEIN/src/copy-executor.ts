@@ -179,12 +179,19 @@ async function executeLiveOrder(
   // FOK market order: spend $sizeUsd buying tokens, limitPrice = worst acceptable price
   // Let SDK auto-resolve negRisk and tickSize from CLOB API.
   // Hardcoding negRisk causes "invalid signature" if market uses neg-risk exchange.
+  //
+  // SLIPPAGE: Add 3¢ tolerance above ask to sweep through thin book levels.
+  // FOK requires the ENTIRE order to fill — if the ask only has 5 shares and we want 20,
+  // we need to reach into the next price levels. Cap at 0.99 to avoid overpaying.
+  const slippedPrice = Math.min(limitPrice + 0.03, 0.99);
+  logger.debug("copy-executor", `BUY limit: ask=${limitPrice.toFixed(4)} → slipped=${slippedPrice.toFixed(4)} (+3¢)`);
+
   const response = await client.createAndPostMarketOrder(
     {
       tokenID: tokenId,
       amount: sizeUsd,
       side: clobClient.Side.BUY,
-      price: limitPrice,
+      price: slippedPrice,
     },
     {} as any,  // SDK auto-resolves tickSize + negRisk per token
     clobClient.OrderType.FOK,
@@ -226,12 +233,17 @@ export async function executeLiveSell(
   const startMs = Date.now();
 
   try {
+    // SLIPPAGE: Subtract 3¢ from bid to sweep through thin book levels for SELL.
+    // FOK requires full fill — need to reach into lower bid levels. Floor at 0.01.
+    const slippedPrice = Math.max(limitPrice - 0.03, 0.01);
+    logger.debug("copy-executor", `SELL limit: bid=${limitPrice.toFixed(4)} → slipped=${slippedPrice.toFixed(4)} (-3¢)`);
+
     const response = await client.createAndPostMarketOrder(
       {
         tokenID: tokenId,
         amount: shares,
         side: clobClient.Side.SELL,
-        price: limitPrice,
+        price: slippedPrice,
       },
       {} as any,  // SDK auto-resolves tickSize + negRisk per token
       clobClient.OrderType.FOK,
