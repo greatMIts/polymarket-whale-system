@@ -84,12 +84,13 @@ export async function executeCopy(
   // The whale already swept the order book up to their fill price.
   // Our book ask may be STALE (showing pre-whale price like 0.51 when whale paid 0.74).
   // NEVER use book ask alone — use max(ask, whalePrice) as our effective entry price.
-  // Reject ONLY if even the whale's price is too high (>0.85 = too expensive territory).
+  // HARD CAP: reject if effective price > 0.70 — never enter expensive positions.
+  const MAX_ENTRY_PRICE = 0.70;
   let effectiveAsk = currentAsk;
   if (isLive) {
     effectiveAsk = Math.max(currentAsk, signal.price);
-    if (effectiveAsk > 0.85) {
-      throw new Error(`PRICE_TOO_HIGH: effective=${effectiveAsk.toFixed(4)} ask=${currentAsk.toFixed(4)} whale=${signal.price.toFixed(4)}`);
+    if (effectiveAsk > MAX_ENTRY_PRICE) {
+      throw new Error(`PRICE_TOO_HIGH: effective=${effectiveAsk.toFixed(4)} ask=${currentAsk.toFixed(4)} whale=${signal.price.toFixed(4)} cap=${MAX_ENTRY_PRICE}`);
     }
     if (currentAsk < signal.price) {
       logger.info("copy-executor", `Stale book: ask=${currentAsk.toFixed(4)} < whale=${signal.price.toFixed(4)} — using whale price as floor`);
@@ -98,10 +99,27 @@ export async function executeCopy(
     }
   }
 
-  // Entry price: paper mode uses whale's price, live mode uses effective ask (max of book ask & whale price)
-  const entryPrice = isLive ? effectiveAsk : signal.price;
+  // 4. Place order (live mode only) — do this FIRST so we know the real fill price
+  // Pass whale's price — executeLiveOrder adds +8¢ slippage for the GTC limit
+  let orderId: string | undefined;
+  let fillPrice = 0;
+  let fillShares = 0;
+  if (isLive) {
+    const result = await executeLiveOrder(tokenId, signal.side, sizeUsd, signal.price);
+    if (result) {
+      orderId = result.orderId;
+      fillPrice = result.fillPrice;
+      fillShares = result.fillShares;
+    }
+  }
 
-  // 4. Build WhaleCopyMeta (12 fields)
+  // Entry price: LIVE mode uses actual fill price from CLOB, paper mode uses whale's price
+  // Fallback chain: real fill → effective ask estimate → whale price
+  const entryPrice = isLive
+    ? (fillPrice > 0 ? fillPrice : effectiveAsk)
+    : signal.price;
+
+  // 5. Build WhaleCopyMeta (12 fields)
   const whaleCopy: WhaleCopyMeta = {
     triggeredByWallet: signal.wallet,
     whaleWalletLabel: signal.walletLabel,
@@ -117,15 +135,8 @@ export async function executeCopy(
     concurrentWhaleSignals: features.concurrentWhales,
   };
 
-  // 5. Place order (live mode only)
-  // Pass whale's price — executeLiveOrder adds +8¢ slippage for the GTC limit
-  let orderId: string | undefined;
-  if (isLive) {
-    orderId = await executeLiveOrder(tokenId, signal.side, sizeUsd, signal.price);
-  }
-
-  // 6. Build TradeExecution
-  const shares = sizeUsd / entryPrice;
+  // 6. Build TradeExecution — use real fill shares if available, else compute from entry price
+  const shares = fillShares > 0 ? fillShares : sizeUsd / entryPrice;
   const trade: TradeExecution = {
     id: generateTradeId(),
     ts: now,
@@ -172,20 +183,30 @@ export async function executeCopy(
 // Places a GTC limit order via Polymarket's CLOB SDK.
 // Limit price = whale price + 8¢ max slippage.
 // GTC sits on the book and fills as liquidity arrives — no FOK kill problem.
+// After placement, polls for actual fill price so dashboard shows the REAL entry.
 
 const MAX_BUY_SLIPPAGE = 0.08;   // max 8¢ above whale price
+const FILL_POLL_DELAY_MS = 1500;  // wait before checking fill
+const FILL_POLL_RETRIES = 3;      // retry up to 3 times
+const FILL_POLL_INTERVAL_MS = 1000;
+
+interface LiveOrderResult {
+  orderId: string;
+  fillPrice: number;   // actual avg fill price (0 if unknown)
+  fillShares: number;   // actual shares filled (0 if unknown)
+}
 
 async function executeLiveOrder(
   tokenId: string,
   side: string,
   sizeUsd: number,
   whalePrice: number
-): Promise<string | undefined> {
+): Promise<LiveOrderResult | undefined> {
   const client = clobClient.getClient();
   const startMs = Date.now();
 
-  // GTC limit order: whale price + 8¢ max slippage, capped at 0.95
-  const limitPrice = Math.min(whalePrice + MAX_BUY_SLIPPAGE, 0.95);
+  // GTC limit order: whale price + 8¢ max slippage, hard capped at 0.70
+  const limitPrice = Math.min(whalePrice + MAX_BUY_SLIPPAGE, 0.70);
   const shares = sizeUsd / limitPrice;
   logger.info("copy-executor", `BUY GTC: whale=${whalePrice.toFixed(4)} limit=${limitPrice.toFixed(4)} (+${MAX_BUY_SLIPPAGE}) size=$${sizeUsd} shares=${shares.toFixed(2)}`);
 
@@ -210,8 +231,9 @@ async function executeLiveOrder(
     throw new Error(`ORDER_REJECTED: ${errMsg}`);
   }
 
+  const orderId = response.orderID;
   logger.event("copy-executor", "LIVE_ORDER_PLACED", {
-    orderId: response.orderID,
+    orderId,
     status: response.status,
     side,
     sizeUsd,
@@ -221,7 +243,92 @@ async function executeLiveOrder(
     latencyMs,
   });
 
-  return response.orderID;
+  // ─── Poll for actual fill price ──────────────────────────────────────────
+  // GTC orders may fill instantly or over time. Poll getOrder to get the
+  // real fill price from associated trades so the dashboard shows truth.
+  const fillResult = await pollForFill(client, orderId, limitPrice);
+  return { orderId, ...fillResult };
+}
+
+/**
+ * Poll getOrder + getTrades to find the actual average fill price.
+ * Returns { fillPrice, fillShares } — falls back to 0 if we can't determine.
+ */
+async function pollForFill(
+  client: any,
+  orderId: string,
+  limitPrice: number
+): Promise<{ fillPrice: number; fillShares: number }> {
+  // Wait a moment for the matching engine to process
+  await new Promise(r => setTimeout(r, FILL_POLL_DELAY_MS));
+
+  for (let attempt = 0; attempt < FILL_POLL_RETRIES; attempt++) {
+    try {
+      const order = await client.getOrder(orderId);
+      logger.debug("copy-executor", `getOrder attempt ${attempt + 1}: ${JSON.stringify(order)}`);
+
+      const sizeMatched = parseFloat(order?.size_matched || "0");
+      if (sizeMatched <= 0) {
+        // Not filled yet — wait and retry
+        if (attempt < FILL_POLL_RETRIES - 1) {
+          await new Promise(r => setTimeout(r, FILL_POLL_INTERVAL_MS));
+          continue;
+        }
+        logger.warn("copy-executor", `Order ${orderId} not yet filled after ${FILL_POLL_RETRIES} polls — using limit as estimate`);
+        return { fillPrice: limitPrice, fillShares: 0 };
+      }
+
+      // Order has fills — try to get actual trade prices
+      const trades: string[] = order.associate_trades || [];
+      if (trades.length > 0) {
+        // Fetch our recent trades to compute VWAP
+        try {
+          const recentTrades = await client.getTrades({ asset_id: order.asset_id }, true);
+          // Filter to trades that match our order
+          const ourFills = (recentTrades || []).filter(
+            (t: any) => t.taker_order_id === orderId || trades.includes(t.id)
+          );
+
+          if (ourFills.length > 0) {
+            // Compute volume-weighted average fill price
+            let totalValue = 0;
+            let totalSize = 0;
+            for (const fill of ourFills) {
+              const p = parseFloat(fill.price || "0");
+              const s = parseFloat(fill.size || "0");
+              if (p > 0 && s > 0) {
+                totalValue += p * s;
+                totalSize += s;
+              }
+            }
+            if (totalSize > 0) {
+              const vwap = totalValue / totalSize;
+              logger.info("copy-executor", `Fill VWAP: ${vwap.toFixed(4)} from ${ourFills.length} trades, ${totalSize.toFixed(2)} shares`);
+              return { fillPrice: vwap, fillShares: totalSize };
+            }
+          }
+        } catch (e: any) {
+          logger.debug("copy-executor", `getTrades failed: ${e.message} — falling back to order price`);
+        }
+      }
+
+      // Fallback: order has size_matched but we couldn't get trade details
+      // Use the order's price (our limit) — the fill is at or better than this
+      const orderPrice = parseFloat(order.price || String(limitPrice));
+      logger.info("copy-executor", `Fill detected: ${sizeMatched.toFixed(2)} shares matched, using order price ${orderPrice.toFixed(4)}`);
+      return { fillPrice: orderPrice, fillShares: sizeMatched };
+
+    } catch (e: any) {
+      logger.debug("copy-executor", `getOrder poll attempt ${attempt + 1} failed: ${e.message}`);
+      if (attempt < FILL_POLL_RETRIES - 1) {
+        await new Promise(r => setTimeout(r, FILL_POLL_INTERVAL_MS));
+      }
+    }
+  }
+
+  // All polls failed — fall back to limit price as upper bound estimate
+  logger.warn("copy-executor", `Could not determine fill price for ${orderId} — using limit ${limitPrice.toFixed(4)}`);
+  return { fillPrice: limitPrice, fillShares: 0 };
 }
 
 // ─── Live SELL Order (for TP exits) ──────────────────────────────────────────
