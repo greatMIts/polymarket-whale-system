@@ -131,15 +131,16 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
 
     // ─── Step 3: Build features (~8ms, sync) ──────────────────────────────
 
-    const features = buildFeatureVector(contract, signal.side, tokenId, signal.price);
-    if (!features) {
-      // Log rejection to decisions file (was previously silent — only debug log)
-      decisionsLog.logDecision(contract, signal.side, ZERO_FEATURES, ZERO_SCORE, "SKIP", signal.usdcSize, signal, "FEATURES_UNAVAILABLE");
+    const featureResult = buildFeatureVector(contract, signal.side, tokenId, signal.price);
+    if (!featureResult.features) {
+      // Log rejection with specific gate reason (e.g. NO_SPOT_PRICE, TIMING_TOO_LATE_45s, LOW_EDGE_0.0312)
+      decisionsLog.logDecision(contract, signal.side, ZERO_FEATURES, ZERO_SCORE, "SKIP", signal.usdcSize, signal, featureResult.rejectReason);
       logger.debug("pipeline",
-        `No features for ${signal.walletLabel} ${signal.side} on ${contract.asset} ${contract.conditionId.slice(0, 8)}...`
+        `No features for ${signal.walletLabel} ${signal.side} on ${contract.asset} ${contract.conditionId.slice(0, 8)}...: ${featureResult.rejectReason}`
       );
       return;
     }
+    const features = featureResult.features;
 
     // Override entryPrice + midEdge: use whale's price as floor in LIVE mode
     // The book ask can be massively stale (whale swept the book, remaining asks are higher).

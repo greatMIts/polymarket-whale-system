@@ -55,26 +55,32 @@ function logGateSummary(): void {
 }
 
 // ─── Build Feature Vector ──────────────────────────────────────────────────
+// Returns { features, rejectReason } — features is null when a gate blocks,
+// with rejectReason giving the specific gate name for the score feed.
+
+export type FeatureResult =
+  | { features: FeatureVector; rejectReason: null }
+  | { features: null; rejectReason: string };
 
 export function buildFeatureVector(
   contract: ContractInfo,
   side: Side,
   tokenId: string,
   whalePrice?: number
-): FeatureVector | null {
+): FeatureResult {
   gateStats.total++;
   logGateSummary();
 
   // 1. Spot price from Binance
   const spotPrice = binance.getPrice(contract.asset);
-  if (!spotPrice || spotPrice === 0) { gateStats.noSpot++; return null; }
+  if (!spotPrice || spotPrice === 0) { gateStats.noSpot++; return { features: null, rejectReason: "NO_SPOT_PRICE" }; }
 
   // 1b. Per-asset staleness check (Bug 9 fix)
-  if (binance.isAssetStale(contract.asset)) { gateStats.assetStale++; return null; }
+  if (binance.isAssetStale(contract.asset)) { gateStats.assetStale++; return { features: null, rejectReason: "ASSET_STALE" }; }
 
   // 2. Book state from Polymarket
   const book = polyBook.getBook(tokenId);
-  if (!book || book.mid === 0) { gateStats.noBook++; return null; }
+  if (!book || book.mid === 0) { gateStats.noBook++; return { features: null, rejectReason: "NO_BOOK" }; }
 
   // 3. Timing
   const now = Date.now();
@@ -82,19 +88,23 @@ export function buildFeatureVector(
   const runtime = getRuntime();
 
   // Hard gate: must have enough time (uses runtime config for hot-reload)
-  if (secsRemaining < runtime.minSecsRemaining || secsRemaining > runtime.maxSecsRemaining) {
+  if (secsRemaining < runtime.minSecsRemaining) {
     gateStats.timing++;
-    return null;
+    return { features: null, rejectReason: `TIMING_TOO_LATE_${Math.round(secsRemaining)}s` };
+  }
+  if (secsRemaining > runtime.maxSecsRemaining) {
+    gateStats.timing++;
+    return { features: null, rejectReason: `TIMING_TOO_EARLY_${Math.round(secsRemaining)}s` };
   }
 
   // 4. Entry price: use whale's actual price when available (book ask is stale after whale sweep)
   //    Fallback to book.ask for paper mode / when no whale price provided
   const entryPrice = (whalePrice && whalePrice > 0) ? whalePrice : book.ask;
-  if (entryPrice <= 0 || entryPrice >= 1) { gateStats.badEntry++; return null; }
+  if (entryPrice <= 0 || entryPrice >= 1) { gateStats.badEntry++; return { features: null, rejectReason: `BAD_ENTRY_${entryPrice.toFixed(4)}` }; }
 
   // Hard gates: price range & spread (uses runtime config for hot-reload)
-  if (entryPrice < runtime.minPrice || entryPrice > runtime.maxPrice) { gateStats.priceRange++; return null; }
-  if (book.spread > runtime.maxBookSpread) { gateStats.spread++; return null; }
+  if (entryPrice < runtime.minPrice || entryPrice > runtime.maxPrice) { gateStats.priceRange++; return { features: null, rejectReason: `PRICE_OUT_OF_RANGE_${entryPrice.toFixed(4)}` }; }
+  if (book.spread > runtime.maxBookSpread) { gateStats.spread++; return { features: null, rejectReason: `SPREAD_TOO_WIDE_${book.spread.toFixed(4)}` }; }
 
   // 5. Deltas and direction from Binance
   const delta30s = binance.getDelta30s(contract.asset);
@@ -131,12 +141,12 @@ export function buildFeatureVector(
       const usingFallback = contract.strikePrice === null;
       logger.debug("features", `Edge reject: ${contract.asset} ${side} edge=${edgeVsSpot.toFixed(4)} fair=${fairValue.toFixed(4)} entry=${entryPrice.toFixed(4)} strike=${strikePrice.toFixed(2)}${usingFallback ? " (FALLBACK=spot)" : ""} secsRem=${secsRemaining.toFixed(0)}`);
     }
-    return null;
+    return { features: null, rejectReason: `LOW_EDGE_${edgeVsSpot.toFixed(4)}` };
   }
 
   // Hard gate: minimum mid-edge (uses runtime config, -1 = disabled)
   if (runtime.minMidEdge > -1 && midEdge < runtime.minMidEdge) {
-    return null;
+    return { features: null, rejectReason: `LOW_MID_EDGE_${midEdge.toFixed(4)}` };
   }
 
   // 9. Momentum alignment: does Binance direction agree with our bet?
@@ -163,23 +173,26 @@ export function buildFeatureVector(
 
   gateStats.passed++;
   return {
-    spotPrice,
-    delta30s,
-    delta5m,
-    vol1h,
-    priceDirection,
-    polyMid: book.mid,
-    bookSpread: book.spread,
-    secsRemaining,
-    fairValue,
-    edgeVsSpot,
-    midEdge,
-    entryPrice,
-    momentumAligned,
-    hourOfDay,
-    concurrentWhales,
-    bestWalletTier,
-    whaleMaxSize,
-    whaleAgreement,
+    features: {
+      spotPrice,
+      delta30s,
+      delta5m,
+      vol1h,
+      priceDirection,
+      polyMid: book.mid,
+      bookSpread: book.spread,
+      secsRemaining,
+      fairValue,
+      edgeVsSpot,
+      midEdge,
+      entryPrice,
+      momentumAligned,
+      hourOfDay,
+      concurrentWhales,
+      bestWalletTier,
+      whaleMaxSize,
+      whaleAgreement,
+    },
+    rejectReason: null,
   };
 }
