@@ -23,7 +23,6 @@ import * as signalAggregator from "./signal-aggregator";
 import * as contractScanner from "./contract-scanner";
 import * as polyBook from "./polymarket-book";
 import { buildFeatureVector } from "./features";
-import { computeScore } from "./scorer";
 import { validateWhaleSignal } from "./signal-validator";
 import * as copyExecutor from "./copy-executor";
 import * as positions from "./positions";
@@ -154,22 +153,22 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
     // Re-derive edgeVsSpot with the corrected entry price
     features.edgeVsSpot = features.fairValue - features.entryPrice;
 
-    // ─── Step 4: Score (~5ms, sync) ────────────────────────────────────────
+    // ─── Step 4: Scoring removed — filter gates in features.ts handle everything
+    // All hard gates (edge range, midEdge, price, secs, spread) are checked in
+    // buildFeatureVector(). If we reach here, the trade passed all filters.
+    // We still build a ScoringResult for logging/dashboard compatibility.
 
-    const score = computeScore(features);
+    const score: ScoringResult = {
+      totalScore: 100,  // all filter-passing trades get max score (filter = binary pass/fail)
+      components: {
+        edgeScore: 0, midEdgeScore: 0, momentumScore: 0,
+        timingScore: 0, activityScore: 0, whaleBonus: 0, hourBonus: 0,
+      },
+      recommendation: "STANDARD",
+      suggestedSize: getRuntime().betSizeUsdc,
+    };
 
-    // ─── Step 5: Decision gate ────────────────────────────────────────────
-
-    // Use runtime config so dashboard is the prime manager of score threshold
     const runtime = getRuntime();
-
-    if (score.totalScore < runtime.minTradeScore) {
-      decisionsLog.logDecision(contract, signal.side, features, score, "SKIP", signal.usdcSize, signal, "SCORE_TOO_LOW");
-      logger.debug("pipeline",
-        `Below threshold: ${signal.walletLabel} ${signal.side} score=${score.totalScore} (min=${runtime.minTradeScore})`
-      );
-      return;
-    }
 
     // ─── Step 6: Risk checks ──────────────────────────────────────────────
 
@@ -200,7 +199,7 @@ async function handleWhaleTrade(signal: WhaleSignal): Promise<void> {
     }
 
     // 6d. Total dollar risk check (Bug #3 v4)
-    const sizeUsd = copyExecutor.computeSize(score);
+    const sizeUsd = copyExecutor.computeSize();
     const shares = pnl.computeShares(sizeUsd, features.entryPrice);
     const additionalRisk = pnl.computeRisk(features.entryPrice, shares);
     const currentRisk = positions.getTotalRiskUsd();

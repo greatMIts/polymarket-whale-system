@@ -263,11 +263,12 @@ export interface RuntimeConfig {
 
   // Hard gates (hot-reloadable from Settings)
   minEdgeVsSpot: number;       // default 0.05
+  maxEdgeVsSpot: number;       // default 0.30 — cap losers (edge > 0.30 is anti-predictive)
   minPrice: number;            // default 0.45
-  maxPrice: number;            // default 0.85
+  maxPrice: number;            // default 0.70
   maxBookSpread: number;       // default 0.04
   minSecsRemaining: number;    // default 90
-  maxSecsRemaining: number;    // default 300
+  maxSecsRemaining: number;    // default 275
 
   // Risk
   maxTotalAtRisk: number;      // default 500
@@ -276,7 +277,7 @@ export interface RuntimeConfig {
   betSizeUsdc: number;             // fixed USDC per trade (default 10)
 
   // MidEdge gate
-  minMidEdge: number;                  // default -1 (disabled)
+  minMidEdge: number;                  // default 0 — midEdge must be < 0 (buying below mid)
 
   // Sizing tiers (score-based, managed from dashboard)
   sizingTier1Score: number;   // default 80, size = sizingTier1Size

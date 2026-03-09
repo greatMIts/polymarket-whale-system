@@ -54,27 +54,18 @@ export const CONFIG = {
 
   // Hard gates
   minEdgeVsSpot: 0.05,
+  maxEdgeVsSpot: 0.30,
   minPrice: 0.45,
-  maxPrice: 0.85,
+  maxPrice: 0.70,
   maxBookSpread: 0.04,
   minSecsRemaining: 90,
-  maxSecsRemaining: 300,
+  maxSecsRemaining: 275,
   allowedAssets: ["BTC", "ETH"] as const,
   allowedDurations: [5] as const,
 
-  // Scoring (defaults, can be overridden by runtime config)
-  defaultMinTradeScore: 60,
-  minCopyScore: 50,                // min score to execute a whale copy trade (matches $2 sizing tier)
-  copyLatencyBudgetMs: 2_000,      // max pipeline latency before abort
-
-  // Sizing tiers: score threshold → base USD bet
-  sizingTiers: [
-    { minScore: 90, size: 20 },
-    { minScore: 80, size: 15 },
-    { minScore: 70, size: 10 },
-    { minScore: 60, size: 5 },
-    { minScore: 50, size: 2 },   // shadow/data-collection only
-  ] as const,
+  // Sizing — flat bet, no scoring tiers
+  defaultBetSize: 13,               // flat $13 per trade
+  copyLatencyBudgetMs: 2_000,       // max pipeline latency before abort
 
   // Risk management
   maxConcurrentPositions: 100,
@@ -122,13 +113,14 @@ const RUNTIME_CONFIG_FILE = path.resolve(CONFIG.dataDir, "rothstein-config.json"
 
 const DEFAULT_RUNTIME: RuntimeConfig = {
   deadHours: [15, 16],            // UTC hours to skip trading
-  minTradeScore: CONFIG.defaultMinTradeScore,
+  minTradeScore: 0,               // scoring removed — filter gates handle everything
   sizingMultiplier: 1.0,
   maxConcurrentPositions: CONFIG.maxConcurrentPositions,
   paused: false,
 
   // Hard gates
   minEdgeVsSpot: CONFIG.minEdgeVsSpot,
+  maxEdgeVsSpot: CONFIG.maxEdgeVsSpot,
   minPrice: CONFIG.minPrice,
   maxPrice: CONFIG.maxPrice,
   maxBookSpread: CONFIG.maxBookSpread,
@@ -139,20 +131,20 @@ const DEFAULT_RUNTIME: RuntimeConfig = {
   maxTotalAtRisk: CONFIG.maxTotalAtRisk,
 
   // Sizing
-  betSizeUsdc: 10,                  // fixed USDC per trade (legacy, overridden by tiers)
+  betSizeUsdc: CONFIG.defaultBetSize,   // flat $13 per trade
 
   // MidEdge gate
-  minMidEdge: -1,                   // disabled by default
+  minMidEdge: 0,                        // midEdge must be < 0 (buying below mid)
 
-  // Sizing tiers (score-based)
-  sizingTier1Score: 80,
-  sizingTier1Size: 15,
-  sizingTier2Score: 70,
-  sizingTier2Size: 10,
-  sizingTier3Score: 60,
-  sizingTier3Size: 5,
-  sizingTier4Score: 50,
-  sizingTier4Size: 2,
+  // Sizing tiers (legacy — all set to flat $13, scoring removed)
+  sizingTier1Score: 0,
+  sizingTier1Size: CONFIG.defaultBetSize,
+  sizingTier2Score: 0,
+  sizingTier2Size: CONFIG.defaultBetSize,
+  sizingTier3Score: 0,
+  sizingTier3Size: CONFIG.defaultBetSize,
+  sizingTier4Score: 0,
+  sizingTier4Size: CONFIG.defaultBetSize,
 
   // Conditional TP
   conditionalTpMinPrice: CONFIG.conditionalTpMinPrice,

@@ -414,9 +414,14 @@
           <input type="number" class="config-input" id="cfgMinEdge" value="0.05" min="0" max="0.5" step="0.01" onchange="saveSettings()">
         </div>
         <div class="config-row">
-          <label>Min Mid Edge:</label>
-          <input type="number" class="config-input" id="cfgMinMidEdge" value="-1" min="-1" max="0.5" step="0.01" onchange="saveSettings()">
-          <span style="font-size:9px;color:var(--dim)">-1=off</span>
+          <label>Max Edge vs Spot:</label>
+          <input type="number" class="config-input" id="cfgMaxEdge" value="0.30" min="0.05" max="1.0" step="0.01" onchange="saveSettings()">
+          <span style="font-size:9px;color:var(--dim)">cap losers</span>
+        </div>
+        <div class="config-row">
+          <label>Max Mid Edge:</label>
+          <input type="number" class="config-input" id="cfgMinMidEdge" value="0" min="-1" max="0.5" step="0.01" onchange="saveSettings()">
+          <span style="font-size:9px;color:var(--dim)">midE must be &lt; this</span>
         </div>
         <div class="config-row">
           <label>Min Price:</label>
@@ -424,7 +429,7 @@
         </div>
         <div class="config-row">
           <label>Max Price:</label>
-          <input type="number" class="config-input" id="cfgMaxPrice" value="0.85" min="0.01" max="0.99" step="0.01" onchange="saveSettings()">
+          <input type="number" class="config-input" id="cfgMaxPrice" value="0.70" min="0.01" max="0.99" step="0.01" onchange="saveSettings()">
         </div>
         <div class="config-row">
           <label>Max Book Spread:</label>
@@ -436,7 +441,7 @@
         </div>
         <div class="config-row">
           <label>Max Secs Remaining:</label>
-          <input type="number" class="config-input" id="cfgMaxSecs" value="300" min="30" max="900" step="5" onchange="saveSettings()">
+          <input type="number" class="config-input" id="cfgMaxSecs" value="275" min="30" max="900" step="5" onchange="saveSettings()">
         </div>
       </div>
     </div>
@@ -768,6 +773,7 @@ function syncConfigInputs(cfg) {
     }
   };
   safeSet('cfgMinEdge', cfg.minEdgeVsSpot);
+  safeSet('cfgMaxEdge', cfg.maxEdgeVsSpot);
   safeSet('cfgMinMidEdge', cfg.minMidEdge);
   safeSet('cfgMinPrice', cfg.minPrice);
   safeSet('cfgMaxPrice', cfg.maxPrice);
@@ -798,6 +804,7 @@ function saveSettings() {
   saveTimeout = setTimeout(() => {
     const body = {
       minEdgeVsSpot: parseFloat(document.getElementById('cfgMinEdge').value),
+      maxEdgeVsSpot: parseFloat(document.getElementById('cfgMaxEdge').value),
       minMidEdge: parseFloat(document.getElementById('cfgMinMidEdge').value),
       minPrice: parseFloat(document.getElementById('cfgMinPrice').value),
       maxPrice: parseFloat(document.getElementById('cfgMaxPrice').value),

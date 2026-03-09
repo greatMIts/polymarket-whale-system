@@ -32,28 +32,12 @@ export function generateTradeId(): string {
   return `R-${ts}-${count}`;
 }
 
-// ─── Compute Size from Score Tier ────────────────────────────────────────────
+// ─── Compute Size — flat $13 per trade ───────────────────────────────────────
 
-export function computeSize(score: ScoringResult): number {
+export function computeSize(): number {
   const effectiveMultiplier = risk.getEffectiveSizingMultiplier();
   const runtime = getRuntime();
-
-  // Use runtime-configurable tiers (managed from dashboard Strategy box)
-  const tiers = [
-    { minScore: runtime.sizingTier1Score, size: runtime.sizingTier1Size },
-    { minScore: runtime.sizingTier2Score, size: runtime.sizingTier2Size },
-    { minScore: runtime.sizingTier3Score, size: runtime.sizingTier3Size },
-    { minScore: runtime.sizingTier4Score, size: runtime.sizingTier4Size },
-  ].sort((a, b) => b.minScore - a.minScore);  // highest first
-
-  let baseSizeUsd = tiers[tiers.length - 1].size; // default to lowest tier
-  for (const tier of tiers) {
-    if (score.totalScore >= tier.minScore) {
-      baseSizeUsd = tier.size;
-      break;
-    }
-  }
-
+  const baseSizeUsd = runtime.betSizeUsdc;
   const finalSize = Math.max(1, Math.round(baseSizeUsd * effectiveMultiplier * runtime.sizingMultiplier * 100) / 100);
   return finalSize;
 }
@@ -69,8 +53,8 @@ export async function executeCopy(
 ): Promise<TradeExecution> {
   const now = Date.now();
 
-  // 1. Compute sizing
-  const sizeUsd = computeSize(score);
+  // 1. Compute sizing — flat $13
+  const sizeUsd = computeSize();
 
   // 2. Get current ask from cached book
   const book = polyBook.getBook(tokenId);
@@ -80,43 +64,36 @@ export async function executeCopy(
   const currentAsk = book.ask;
   const isLive = CONFIG.mode === "LIVE";
 
-  // 3. Price logic — LIVE mode
-  // The whale already swept the order book up to their fill price.
-  // Our book ask may be STALE (showing pre-whale price like 0.51 when whale paid 0.74).
-  // NEVER use book ask alone — use max(ask, whalePrice) as our effective entry price.
-  // HARD CAP: reject if effective price > 0.70 — never enter expensive positions.
-  const MAX_ENTRY_PRICE = 0.70;
+  // 3. Price logic — price at CURRENT ASK (not whale price + slippage)
+  // The whale already swept the book. Our ask reflects post-whale reality.
+  // Use max(ask, whalePrice) as floor — book can be stale showing pre-whale price.
+  // HARD CAP: reject if effective price > maxPrice (default 0.70).
+  const runtime = getRuntime();
+  const MAX_ENTRY_PRICE = runtime.maxPrice;
   let effectiveAsk = currentAsk;
   if (isLive) {
     effectiveAsk = Math.max(currentAsk, signal.price);
     if (effectiveAsk > MAX_ENTRY_PRICE) {
       throw new Error(`PRICE_TOO_HIGH: effective=${effectiveAsk.toFixed(4)} ask=${currentAsk.toFixed(4)} whale=${signal.price.toFixed(4)} cap=${MAX_ENTRY_PRICE}`);
     }
-    if (currentAsk < signal.price) {
-      logger.info("copy-executor", `Stale book: ask=${currentAsk.toFixed(4)} < whale=${signal.price.toFixed(4)} — using whale price as floor`);
-    } else if (currentAsk > signal.price + 0.06) {
-      throw new Error(`PRICE_STALE: ask=${currentAsk.toFixed(4)} whale=${signal.price.toFixed(4)} diff=+${(currentAsk - signal.price).toFixed(4)} (ask way above whale)`);
-    }
   }
 
-  // 4. Place order (live mode only) — do this FIRST so we know the real fill price
-  // Pass whale's price — executeLiveOrder adds +8¢ slippage for the GTC limit
+  // 4. Place order (live mode only) — FOK at effective ask price
+  // FOK = Fill-or-Kill: instant fill or immediate cancel, no polling needed
   let orderId: string | undefined;
   let fillPrice = 0;
   let fillShares = 0;
   if (isLive) {
-    const result = await executeLiveOrder(tokenId, signal.side, sizeUsd, signal.price);
+    const result = await executeLiveOrder(tokenId, signal.side, sizeUsd, effectiveAsk);
     if (result) {
       orderId = result.orderId;
       fillPrice = result.fillPrice;
       fillShares = result.fillShares;
     }
 
-    // CRITICAL: abort if order was placed but never filled (prevents phantom trades)
-    // pollForFill returns fillShares=0 when order isn't matched after retries.
-    // Without this check, the pipeline opens a position with phantom shares.
+    // CRITICAL: abort if FOK order was not filled (prevents phantom trades)
     if (result && result.fillShares === 0) {
-      throw new Error(`NO_FILL: order ${result.orderId} not matched after ${FILL_POLL_RETRIES} polls`);
+      throw new Error(`NO_FILL: FOK order ${result.orderId} not matched at ask=${effectiveAsk.toFixed(4)}`);
     }
   }
 
@@ -187,15 +164,9 @@ export async function executeCopy(
 }
 
 // ─── Live Order Execution ───────────────────────────────────────────────────
-// Places a GTC limit order via Polymarket's CLOB SDK.
-// Limit price = whale price + 8¢ max slippage.
-// GTC sits on the book and fills as liquidity arrives — no FOK kill problem.
-// After placement, polls for actual fill price so dashboard shows the REAL entry.
-
-const MAX_BUY_SLIPPAGE = 0.08;   // max 8¢ above whale price
-const FILL_POLL_DELAY_MS = 1500;  // wait before checking fill
-const FILL_POLL_RETRIES = 3;      // retry up to 3 times
-const FILL_POLL_INTERVAL_MS = 1000;
+// Places a FOK (Fill-or-Kill) order via Polymarket's CLOB SDK.
+// FOK: instant fill at the specified price or immediate cancel — no waiting.
+// Price = current ask (capped at maxPrice), not whale price + slippage.
 
 interface LiveOrderResult {
   orderId: string;
@@ -207,31 +178,31 @@ async function executeLiveOrder(
   tokenId: string,
   side: string,
   sizeUsd: number,
-  whalePrice: number
+  askPrice: number
 ): Promise<LiveOrderResult | undefined> {
   const client = clobClient.getClient();
   const startMs = Date.now();
 
-  // GTC limit order: whale price + 8¢ max slippage, hard capped at 0.70
-  const limitPrice = Math.min(whalePrice + MAX_BUY_SLIPPAGE, 0.70);
-  const shares = sizeUsd / limitPrice;
-  logger.info("copy-executor", `BUY GTC: whale=${whalePrice.toFixed(4)} limit=${limitPrice.toFixed(4)} (+${MAX_BUY_SLIPPAGE}) size=$${sizeUsd} shares=${shares.toFixed(2)}`);
+  // FOK market order: SDK uses createAndPostMarketOrder with amount in USD
+  // The SDK calculates the optimal price from the order book automatically.
+  // We pass askPrice as the price cap — won't pay more than this.
+  logger.info("copy-executor", `BUY FOK: ask=${askPrice.toFixed(4)} amount=$${sizeUsd}`);
 
-  const response = await client.createAndPostOrder(
+  const response = await client.createAndPostMarketOrder(
     {
       tokenID: tokenId,
-      price: limitPrice,
+      price: askPrice,   // price cap — SDK won't fill above this
+      amount: sizeUsd,   // USD amount to spend
       side: clobClient.Side.BUY,
-      size: shares,
     },
     {} as any,  // SDK auto-resolves tickSize + negRisk per token
-    clobClient.OrderType.GTC,
+    clobClient.OrderType.FOK,
   );
 
   const latencyMs = Date.now() - startMs;
 
   // Log full response for debugging (CLOB SDK has inconsistent error shapes)
-  logger.debug("copy-executor", `CLOB response (${latencyMs}ms): ${JSON.stringify(response)}`);
+  logger.debug("copy-executor", `CLOB FOK response (${latencyMs}ms): ${JSON.stringify(response)}`);
 
   if (!response || !response.success) {
     const errMsg = response?.errorMsg || response?.error || response?.status || JSON.stringify(response);
@@ -239,103 +210,69 @@ async function executeLiveOrder(
   }
 
   const orderId = response.orderID;
-  logger.event("copy-executor", "LIVE_ORDER_PLACED", {
+  logger.event("copy-executor", "LIVE_FOK_PLACED", {
     orderId,
     status: response.status,
     side,
     sizeUsd,
-    whalePrice,
-    limitPrice,
-    shares: shares.toFixed(4),
+    askPrice,
     latencyMs,
   });
 
-  // ─── Poll for actual fill price ──────────────────────────────────────────
-  // GTC orders may fill instantly or over time. Poll getOrder to get the
-  // real fill price from associated trades so the dashboard shows truth.
-  const fillResult = await pollForFill(client, orderId, limitPrice);
-  return { orderId, ...fillResult };
-}
+  // FOK fills instantly — check order for fill details (single call, no polling)
+  try {
+    // Short delay for matching engine to process
+    await new Promise(r => setTimeout(r, 500));
+    const order = await client.getOrder(orderId);
+    logger.debug("copy-executor", `FOK getOrder: ${JSON.stringify(order)}`);
 
-/**
- * Poll getOrder + getTrades to find the actual average fill price.
- * Returns { fillPrice, fillShares } — falls back to 0 if we can't determine.
- */
-async function pollForFill(
-  client: any,
-  orderId: string,
-  limitPrice: number
-): Promise<{ fillPrice: number; fillShares: number }> {
-  // Wait a moment for the matching engine to process
-  await new Promise(r => setTimeout(r, FILL_POLL_DELAY_MS));
+    const sizeMatched = parseFloat(order?.size_matched || "0");
+    if (sizeMatched <= 0) {
+      // FOK was killed — no fill
+      logger.warn("copy-executor", `FOK order ${orderId} killed — no liquidity at ${askPrice.toFixed(4)}`);
+      return { orderId, fillPrice: askPrice, fillShares: 0 };
+    }
 
-  for (let attempt = 0; attempt < FILL_POLL_RETRIES; attempt++) {
-    try {
-      const order = await client.getOrder(orderId);
-      logger.debug("copy-executor", `getOrder attempt ${attempt + 1}: ${JSON.stringify(order)}`);
-
-      const sizeMatched = parseFloat(order?.size_matched || "0");
-      if (sizeMatched <= 0) {
-        // Not filled yet — wait and retry
-        if (attempt < FILL_POLL_RETRIES - 1) {
-          await new Promise(r => setTimeout(r, FILL_POLL_INTERVAL_MS));
-          continue;
-        }
-        logger.warn("copy-executor", `Order ${orderId} not yet filled after ${FILL_POLL_RETRIES} polls — using limit as estimate`);
-        return { fillPrice: limitPrice, fillShares: 0 };
-      }
-
-      // Order has fills — try to get actual trade prices
-      const trades: string[] = order.associate_trades || [];
-      if (trades.length > 0) {
-        // Fetch our recent trades to compute VWAP
-        try {
-          const recentTrades = await client.getTrades({ asset_id: order.asset_id }, true);
-          // Filter to trades that match our order
-          const ourFills = (recentTrades || []).filter(
-            (t: any) => t.taker_order_id === orderId || trades.includes(t.id)
-          );
-
-          if (ourFills.length > 0) {
-            // Compute volume-weighted average fill price
-            let totalValue = 0;
-            let totalSize = 0;
-            for (const fill of ourFills) {
-              const p = parseFloat(fill.price || "0");
-              const s = parseFloat(fill.size || "0");
-              if (p > 0 && s > 0) {
-                totalValue += p * s;
-                totalSize += s;
-              }
-            }
-            if (totalSize > 0) {
-              const vwap = totalValue / totalSize;
-              logger.info("copy-executor", `Fill VWAP: ${vwap.toFixed(4)} from ${ourFills.length} trades, ${totalSize.toFixed(2)} shares`);
-              return { fillPrice: vwap, fillShares: totalSize };
+    // Try to get actual fill VWAP from trades
+    const trades: string[] = order.associate_trades || [];
+    if (trades.length > 0) {
+      try {
+        const recentTrades = await client.getTrades({ asset_id: order.asset_id }, true);
+        const ourFills = (recentTrades || []).filter(
+          (t: any) => t.taker_order_id === orderId || trades.includes(t.id)
+        );
+        if (ourFills.length > 0) {
+          let totalValue = 0;
+          let totalSize = 0;
+          for (const fill of ourFills) {
+            const p = parseFloat(fill.price || "0");
+            const s = parseFloat(fill.size || "0");
+            if (p > 0 && s > 0) {
+              totalValue += p * s;
+              totalSize += s;
             }
           }
-        } catch (e: any) {
-          logger.debug("copy-executor", `getTrades failed: ${e.message} — falling back to order price`);
+          if (totalSize > 0) {
+            const vwap = totalValue / totalSize;
+            logger.info("copy-executor", `FOK fill VWAP: ${vwap.toFixed(4)} from ${ourFills.length} trades, ${totalSize.toFixed(2)} shares`);
+            return { orderId, fillPrice: vwap, fillShares: totalSize };
+          }
         }
-      }
-
-      // Fallback: order has size_matched but we couldn't get trade details
-      // Use the order's price (our limit) — the fill is at or better than this
-      const orderPrice = parseFloat(order.price || String(limitPrice));
-      logger.info("copy-executor", `Fill detected: ${sizeMatched.toFixed(2)} shares matched, using order price ${orderPrice.toFixed(4)}`);
-      return { fillPrice: orderPrice, fillShares: sizeMatched };
-
-    } catch (e: any) {
-      logger.debug("copy-executor", `getOrder poll attempt ${attempt + 1} failed: ${e.message}`);
-      if (attempt < FILL_POLL_RETRIES - 1) {
-        await new Promise(r => setTimeout(r, FILL_POLL_INTERVAL_MS));
+      } catch (e: any) {
+        logger.debug("copy-executor", `getTrades failed: ${e.message}`);
       }
     }
-  }
 
-  // All polls failed — fall back to limit price as upper bound estimate
-  logger.warn("copy-executor", `Could not determine fill price for ${orderId} — using limit ${limitPrice.toFixed(4)}`);
-  return { fillPrice: limitPrice, fillShares: 0 };
+    // Fallback: size_matched but no trade details — use ask price
+    const orderPrice = parseFloat(order.price || String(askPrice));
+    logger.info("copy-executor", `FOK fill: ${sizeMatched.toFixed(2)} shares at ${orderPrice.toFixed(4)}`);
+    return { orderId, fillPrice: orderPrice, fillShares: sizeMatched };
+
+  } catch (e: any) {
+    logger.debug("copy-executor", `FOK getOrder failed: ${e.message} — assuming no fill`);
+    // Can't confirm fill — treat as no fill to be safe (prevents phantom trades)
+    return { orderId, fillPrice: askPrice, fillShares: 0 };
+  }
 }
 
 // ─── Live SELL Order (for TP exits) ──────────────────────────────────────────

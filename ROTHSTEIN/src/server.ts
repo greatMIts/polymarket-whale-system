@@ -224,21 +224,20 @@ export function start(): void {
       if (b.maxConcurrentPositions !== undefined) updates.maxConcurrentPositions = Math.max(1, Math.min(200, Number(b.maxConcurrentPositions)));
       if (b.paused !== undefined) updates.paused = Boolean(b.paused);
 
-      // Hard gates
+      // Hard gates (filter — all configurable from Settings tab)
       if (b.minEdgeVsSpot !== undefined) updates.minEdgeVsSpot = Math.max(0, Math.min(0.5, Number(b.minEdgeVsSpot)));
+      if (b.maxEdgeVsSpot !== undefined) updates.maxEdgeVsSpot = Math.max(0.05, Math.min(1.0, Number(b.maxEdgeVsSpot)));
       if (b.minPrice !== undefined) updates.minPrice = Math.max(0.01, Math.min(0.99, Number(b.minPrice)));
       if (b.maxPrice !== undefined) updates.maxPrice = Math.max(0.01, Math.min(0.99, Number(b.maxPrice)));
       if (b.maxBookSpread !== undefined) updates.maxBookSpread = Math.max(0.001, Math.min(0.20, Number(b.maxBookSpread)));
       if (b.minSecsRemaining !== undefined) updates.minSecsRemaining = Math.max(0, Math.min(600, Number(b.minSecsRemaining)));
       if (b.maxSecsRemaining !== undefined) updates.maxSecsRemaining = Math.max(30, Math.min(900, Number(b.maxSecsRemaining)));
+      if (b.minMidEdge !== undefined) updates.minMidEdge = Math.max(-1, Math.min(0.5, Number(b.minMidEdge)));
 
       // Risk
       if (b.maxTotalAtRisk !== undefined) updates.maxTotalAtRisk = Math.max(5, Math.min(500, Number(b.maxTotalAtRisk)));
-      // Sizing
+      // Sizing — flat bet, no tiers
       if (b.betSizeUsdc !== undefined) updates.betSizeUsdc = Math.max(1, Math.min(1000, Number(b.betSizeUsdc)));
-
-      // MidEdge gate
-      if (b.minMidEdge !== undefined) updates.minMidEdge = Math.max(-1, Math.min(0.5, Number(b.minMidEdge)));
 
       // Sizing tiers
       if (b.sizingTier1Score !== undefined) updates.sizingTier1Score = Math.max(50, Math.min(100, Number(b.sizingTier1Score)));

@@ -144,9 +144,15 @@ export function buildFeatureVector(
     return { features: null, rejectReason: `LOW_EDGE_${edgeVsSpot.toFixed(4)}` };
   }
 
-  // Hard gate: minimum mid-edge (uses runtime config, -1 = disabled)
-  if (runtime.minMidEdge > -1 && midEdge < runtime.minMidEdge) {
-    return { features: null, rejectReason: `LOW_MID_EDGE_${midEdge.toFixed(4)}` };
+  // Hard gate: maximum edge cap — edgeVsSpot > 0.30 is anti-predictive (overshoot)
+  if (edgeVsSpot > runtime.maxEdgeVsSpot) {
+    gateStats.lowEdge++;
+    return { features: null, rejectReason: `HIGH_EDGE_${edgeVsSpot.toFixed(4)}` };
+  }
+
+  // Hard gate: midEdge must be < minMidEdge (default 0 = buying below mid)
+  if (midEdge >= runtime.minMidEdge) {
+    return { features: null, rejectReason: `HIGH_MID_EDGE_${midEdge.toFixed(4)}` };
   }
 
   // 9. Momentum alignment: does Binance direction agree with our bet?

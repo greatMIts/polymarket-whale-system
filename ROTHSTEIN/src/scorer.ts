@@ -105,16 +105,10 @@ function getRecommendation(score: number): ScoreRecommendation {
 
 // ─── Suggested Bet Size ─────────────────────────────────────────────────────
 
-function getSuggestedSize(score: number): number {
+function getSuggestedSize(_score: number): number {
   const runtime = getRuntime();
-  const multiplier = runtime.sizingMultiplier;
-
-  for (const tier of CONFIG.sizingTiers) {
-    if (score >= tier.minScore) {
-      return Math.round(tier.size * multiplier * 100) / 100;
-    }
-  }
-  return 0;
+  // Scoring removed — flat bet size from runtime config
+  return runtime.betSizeUsdc;
 }
 
 // ─── Main Scoring Function ──────────────────────────────────────────────────
