@@ -820,7 +820,13 @@ body {
       <div class="sb-section" style="border-top:1px solid var(--card-border);padding-top:10px;margin-top:6px;">
         <div style="font-size:.7rem;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">Data Export</div>
         <button class="sb-btn" onclick="downloadFile('decisions.csv')" style="margin-bottom:4px;width:100%;">Download Decisions</button>
-        <button class="sb-btn" onclick="downloadFile('trades.csv')" style="width:100%;">Download Trades</button>
+        <button class="sb-btn" onclick="downloadFile('trades.csv')" style="margin-bottom:4px;width:100%;">Download Trades</button>
+      </div>
+      <div class="sb-section" style="border-top:1px solid var(--card-border);padding-top:10px;margin-top:6px;">
+        <div style="font-size:.7rem;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">Archive &amp; Reset</div>
+        <div style="font-size:.62rem;color:var(--text-dim);margin-bottom:6px;">Saves current decisions &amp; trades to timestamped files on the volume, then starts fresh CSVs.</div>
+        <button class="sb-btn" id="archive-btn" onclick="archiveData()" style="width:100%;background:rgba(245,158,11,.12);color:#f59e0b;border-color:rgba(245,158,11,.3);">Archive &amp; Reset Data</button>
+        <div id="archive-status" style="font-size:.62rem;color:var(--text-dim);margin-top:4px;"></div>
       </div>
     </div>
   </div>
@@ -1532,6 +1538,31 @@ body {
   window.downloadFile = function (filename) {
     var host = location.origin || 'http://localhost:3000';
     window.open(host + '/api/download/' + filename, '_blank');
+  };
+
+  window.archiveData = function () {
+    if (!confirm('Archive current decisions & trades files and start fresh?')) return;
+    var host = location.origin || 'http://localhost:3000';
+    var btn = document.getElementById('archive-btn');
+    var statusEl = document.getElementById('archive-status');
+    btn.disabled = true;
+    btn.textContent = 'Archiving...';
+    statusEl.textContent = '';
+    fetch(host + '/api/archive', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        btn.disabled = false;
+        btn.textContent = 'Archive & Reset Data';
+        statusEl.style.color = '#22c55e';
+        statusEl.textContent = 'Archived: ' + (data.archived || []).join(', ');
+        setTimeout(function () { statusEl.textContent = ''; }, 8000);
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        btn.textContent = 'Archive & Reset Data';
+        statusEl.style.color = '#ef4444';
+        statusEl.textContent = 'Error: ' + err.message;
+      });
   };
 
   window.toggleMode = function () {

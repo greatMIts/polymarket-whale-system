@@ -124,6 +124,36 @@ export function start(): void {
     res.download(filePath);
   });
 
+  // Archive decisions + trades: move current files to timestamped copies, start fresh
+  app.post("/api/archive", (req, res) => {
+    const dataDir = path.resolve(ENV.dataDir);
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const results: string[] = [];
+
+    for (const file of ["decisions.csv", "trades.csv"]) {
+      const src = path.resolve(dataDir, file);
+      if (!fs.existsSync(src)) {
+        results.push(`${file}: not found, skipped`);
+        continue;
+      }
+      const stats = fs.statSync(src);
+      if (stats.size === 0) {
+        results.push(`${file}: empty, skipped`);
+        continue;
+      }
+      const archiveName = `${file.replace(".csv", "")}_${ts}.csv`;
+      const dest = path.resolve(dataDir, archiveName);
+      fs.copyFileSync(src, dest);
+      // Truncate original, keeping only the CSV header (first line)
+      const header = fs.readFileSync(src, "utf-8").split("\n")[0];
+      fs.writeFileSync(src, header + "\n");
+      results.push(`${file} → ${archiveName} (${(stats.size / 1024).toFixed(1)} KB)`);
+    }
+
+    log.info(`Archived data files: ${results.join(", ")}`);
+    res.json({ archived: results, timestamp: ts });
+  });
+
   // Create HTTP server
   server = http.createServer(app);
 
