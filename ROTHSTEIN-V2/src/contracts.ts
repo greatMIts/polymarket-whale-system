@@ -1,5 +1,5 @@
 // ─── ROTHSTEIN V2 Contract Scanner ────────────────────────────────────────────
-// Scans Gamma API every 10s for active BTC/ETH 5-min up/down contracts.
+// Scans Gamma API every 10s for all BTC/ETH 5-min up/down contracts ending in the next 30 min.
 // Caches by conditionId, maps tokenId→contract, fetches strike price from
 // Binance klines, and pre-subscribes token IDs to the book module.
 
@@ -54,92 +54,84 @@ async function scan(): Promise<void> {
   let newCount = 0;
   const now = Date.now();
 
-  // Two-pass scan (matching V1 approach):
-  //   Pass 1: Contracts ending NOW → +10 min (currently active + about to start)
-  //   Pass 2: Contracts ending +10 min → +30 min (upcoming, for pre-subscription)
-  const passes = [
-    { end_date_min: new Date(now).toISOString(), end_date_max: new Date(now + 10 * 60_000).toISOString(), label: "active" },
-    { end_date_min: new Date(now + 10 * 60_000).toISOString(), end_date_max: new Date(now + 30 * 60_000).toISOString(), label: "upcoming" },
-  ];
+  // Single pass: fetch all 5-min updown contracts ending in the next 30 minutes.
+  // With BTC + ETH every 5 min, that's ~12 contracts — well under the limit.
+  try {
+    const res = await axios.get(`${URLS.gammaApi}/markets`, {
+      params: {
+        end_date_min: new Date(now).toISOString(),
+        end_date_max: new Date(now + 30 * 60_000).toISOString(),
+        closed: false,
+        limit: 100,
+        order: "endDate",
+        ascending: true,
+      },
+      timeout: 5000,
+    });
 
-  for (const pass of passes) {
-    try {
-      const res = await axios.get(`${URLS.gammaApi}/markets`, {
-        params: {
-          end_date_min: pass.end_date_min,
-          end_date_max: pass.end_date_max,
-          closed: false,
-          limit: 100,
-          order: "endDate",
-          ascending: true,
-        },
-        timeout: 5000,
-      });
+    const markets: any[] = res.data || [];
 
-      const markets: any[] = res.data || [];
+    for (const m of markets) {
+      const slug: string = m.slug || "";
+      if (!SLUG_REGEX.test(slug)) continue;
 
-      for (const m of markets) {
-        const slug: string = m.slug || "";
-        if (!SLUG_REGEX.test(slug)) continue;
+      const conditionId: string = m.conditionId || m.condition_id || "";
+      if (!conditionId) continue;
+      if (contracts.has(conditionId)) continue; // Already cached
 
-        const conditionId: string = m.conditionId || m.condition_id || "";
-        if (!conditionId) continue;
-        if (contracts.has(conditionId)) continue; // Already cached
+      const asset: Asset = slug.startsWith("btc") ? "BTC" : "ETH";
+      const endTs = new Date(m.end_date_iso || m.endDate || 0).getTime();
 
-        const asset: Asset = slug.startsWith("btc") ? "BTC" : "ETH";
-        const endTs = new Date(m.end_date_iso || m.endDate || 0).getTime();
+      // Skip contracts that already ended
+      if (endTs > 0 && endTs < now) continue;
 
-        // Skip contracts that already ended
-        if (endTs > 0 && endTs < now) continue;
+      const rawTokenIds = m.clob_token_ids || m.clobTokenIds || "[]";
+      const clobTokenIds: string[] = typeof rawTokenIds === "string" ? JSON.parse(rawTokenIds) : rawTokenIds;
+      const rawOutcomes = m.outcomes || '["Up","Down"]';
+      const outcomes: string[] = typeof rawOutcomes === "string" ? JSON.parse(rawOutcomes) : rawOutcomes;
 
-        const rawTokenIds = m.clob_token_ids || m.clobTokenIds || "[]";
-        const clobTokenIds: string[] = typeof rawTokenIds === "string" ? JSON.parse(rawTokenIds) : rawTokenIds;
-        const rawOutcomes = m.outcomes || '["Up","Down"]';
-        const outcomes: string[] = typeof rawOutcomes === "string" ? JSON.parse(rawOutcomes) : rawOutcomes;
+      if (clobTokenIds.length < 2) continue;
 
-        if (clobTokenIds.length < 2) continue;
+      // Compute 5-min window start (endTs - 5min)
+      const durationMs = 5 * 60 * 1000;
+      const windowStartTs = endTs - durationMs;
 
-        // Compute 5-min window start (endTs - 5min)
-        const durationMs = 5 * 60 * 1000;
-        const windowStartTs = endTs - durationMs;
+      // Fetch strike price from Binance klines
+      const strikePrice = await fetchStrikePrice(asset, windowStartTs);
 
-        // Fetch strike price from Binance klines
-        const strikePrice = await fetchStrikePrice(asset, windowStartTs);
+      const contract: Contract = {
+        conditionId,
+        title: m.question || m.title || slug,
+        slug,
+        endTs,
+        windowStartTs,
+        durationMs,
+        clobTokenIds,
+        outcomes,
+        asset,
+        strikePrice,
+        fetchedAt: Date.now(),
+      };
 
-        const contract: Contract = {
-          conditionId,
-          title: m.question || m.title || slug,
-          slug,
-          endTs,
-          windowStartTs,
-          durationMs,
-          clobTokenIds,
-          outcomes,
-          asset,
-          strikePrice,
-          fetchedAt: Date.now(),
-        };
-
-        // Store in both indexes
-        contracts.set(conditionId, contract);
-        for (const tid of clobTokenIds) {
-          tokenIndex.set(tid, contract);
-        }
-
-        // Pre-subscribe token IDs to book module
-        book.subscribe(clobTokenIds);
-        newCount++;
-
-        log.info(`New contract: ${contract.title}`, {
-          conditionId: conditionId.slice(0, 10) + "...",
-          asset,
-          endTs: new Date(endTs).toISOString(),
-          strike: strikePrice,
-        });
+      // Store in both indexes
+      contracts.set(conditionId, contract);
+      for (const tid of clobTokenIds) {
+        tokenIndex.set(tid, contract);
       }
-    } catch (err: any) {
-      log.error(`Scan ${pass.label} failed`, err.message);
+
+      // Pre-subscribe token IDs to book module
+      book.subscribe(clobTokenIds);
+      newCount++;
+
+      log.info(`New contract: ${contract.title}`, {
+        conditionId: conditionId.slice(0, 10) + "...",
+        asset,
+        endTs: new Date(endTs).toISOString(),
+        strike: strikePrice,
+      });
     }
+  } catch (err: any) {
+    log.error(`Scan failed`, err.message);
   }
 
   if (newCount > 0) {
