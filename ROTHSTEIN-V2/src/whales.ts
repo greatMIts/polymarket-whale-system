@@ -120,7 +120,16 @@ function parseSignal(t: any, wallet: string, label: string): WhaleSignal | null 
     const side: Side = outcome.toLowerCase().includes("up") ? "Up" : "Down";
     const price = parseFloat(t.price || "0");
     const usdcSize = parseFloat(t.usdcSize || t.amount || t.usdc_size || "0");
-    const ts = new Date(t.timestamp || t.createdAt || t.created_at || Date.now()).getTime();
+    // Data API returns timestamp as Unix SECONDS (e.g. 1773101133), not milliseconds
+    const rawTs = t.timestamp || t.createdAt || t.created_at || Date.now();
+    let ts: number;
+    if (typeof rawTs === "number") {
+      // Unix seconds if < 10 billion (before year 2286), otherwise already ms
+      ts = rawTs < 10_000_000_000 ? rawTs * 1000 : rawTs;
+    } else {
+      ts = new Date(rawTs).getTime();
+    }
+    if (isNaN(ts)) ts = Date.now();
 
     if (price <= 0 || usdcSize <= 0) return null;
 

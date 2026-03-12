@@ -763,7 +763,7 @@ body {
           <div class="panel-body scrollable">
             <table class="pos-table">
               <thead><tr>
-                <th>Asset</th><th>Side</th><th>Entry</th><th>Size</th><th>Age</th><th>PnL</th>
+                <th>Contract</th><th>Side</th><th>Entry</th><th>Size</th><th>Time Left</th><th>PnL</th>
               </tr></thead>
               <tbody id="op-tbody"></tbody>
             </table>
@@ -779,7 +779,7 @@ body {
           <div class="panel-body scrollable">
             <table class="pos-table">
               <thead><tr>
-                <th>Time</th><th>Asset</th><th>Side</th><th>PnL</th><th>Status</th><th>Dur</th>
+                <th>Time</th><th>Contract</th><th>Side</th><th>PnL</th><th>Status</th><th>Dur</th>
               </tr></thead>
               <tbody id="cp-tbody"></tbody>
             </table>
@@ -1292,8 +1292,8 @@ body {
     const wasAtBottom = feed.scrollTop + feed.clientHeight >= feed.scrollHeight - 30;
 
     let html = '';
-    // Show newest first (reverse)
-    for (let i = decs.length - 1; i >= 0; i--) {
+    // Show newest first (index 0 is newest from server)
+    for (let i = 0; i < decs.length; i++) {
       const d = decs[i];
       const isCopy = d.action === 'COPY';
       const wColor = getWalletColor(d.whaleLabel || d.whaleWallet);
@@ -1333,7 +1333,7 @@ body {
 
     const feed = $('whale-feed');
     let html = '';
-    for (let i = signals.length - 1; i >= 0; i--) {
+    for (let i = 0; i < signals.length; i++) {
       const s = signals[i];
       const wColor = getWalletColor(s.walletLabel || s.wallet);
       const isUp = s.side === 'Up' || s.outcome === 'Yes';
@@ -1370,8 +1370,15 @@ body {
       // Estimate PnL (basic: shares * currentMidPrice - cost, or just use status if available)
       const pnlEst = p.pnlEstimate != null ? p.pnlEstimate : 0;
 
+      // Extract short contract label from title, e.g. "Bitcoin Up or Down - March 11, 8:20AM-8:25AM ET" → "BTC 8:20-8:25"
+      var contractLabel = t.asset || '—';
+      if (t.title) {
+        var timeMatch = t.title.match(/(\d{1,2}:\d{2}[AP]M)-(\d{1,2}:\d{2}[AP]M)/);
+        if (timeMatch) contractLabel = (t.asset || '?') + ' ' + timeMatch[1] + '-' + timeMatch[2];
+      }
+
       html += '<tr class="' + (expiring ? 'expiring' : '') + '">';
-      html += '<td>' + (t.asset || '—') + '</td>';
+      html += '<td>' + contractLabel + '</td>';
       html += '<td class="' + sideCls + '">' + (t.side || '—') + '</td>';
       html += '<td>' + fmtPrice(t.entryPrice, 4) + '</td>';
       html += '<td>' + fmtDollar(t.sizeUsd) + '</td>';
@@ -1390,7 +1397,7 @@ body {
     let html = '';
     // Show most recent first
     const sorted = positions.slice().sort(function (a, b) { return (b.closedAt || 0) - (a.closedAt || 0); });
-    const show = sorted.slice(0, 50);
+    const show = sorted.slice(0, 100);
     for (let i = 0; i < show.length; i++) {
       const p = show[i];
       const t = p.trade || {};
@@ -1399,9 +1406,16 @@ body {
       const sideCls = (t.side === 'Up' || t.side === 'YES') ? 'c-green' : 'c-red';
       const dur = (t.ts && p.closedAt) ? Math.floor((p.closedAt - t.ts) / 1000) + 's' : '—';
 
+      // Extract short contract label
+      var cpLabel = t.asset || '—';
+      if (t.title) {
+        var cpTimeMatch = t.title.match(/(\d{1,2}:\d{2}[AP]M)-(\d{1,2}:\d{2}[AP]M)/);
+        if (cpTimeMatch) cpLabel = (t.asset || '?') + ' ' + cpTimeMatch[1] + '-' + cpTimeMatch[2];
+      }
+
       html += '<tr>';
       html += '<td>' + fmtTime(p.closedAt) + '</td>';
-      html += '<td>' + (t.asset || '—') + '</td>';
+      html += '<td>' + cpLabel + '</td>';
       html += '<td class="' + sideCls + '">' + (t.side || '—') + '</td>';
       html += '<td class="' + (pnl >= 0 ? 'c-green' : 'c-red') + '">' + fmtPnl(pnl) + '</td>';
       html += '<td>' + (won ? '<span class="won-badge">WON</span>' : '<span class="lost-badge">LOST</span>') + '</td>';

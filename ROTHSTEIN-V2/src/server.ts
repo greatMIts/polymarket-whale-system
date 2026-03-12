@@ -47,7 +47,7 @@ function buildState(): DashboardState {
     recentDecisions: decisions.getRecentDecisions(),
     whaleSignals: whales.getRecentSignals(50),
     openPositions: positions.getOpenPositions(),
-    closedPositions: positions.getClosedPositions().slice(-50),
+    closedPositions: positions.getClosedPositions().slice(0, 100),
     stats: positions.getStats(),
     health: {
       binanceWs: binance.getStatus(),

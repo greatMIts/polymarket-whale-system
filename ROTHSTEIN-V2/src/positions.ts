@@ -87,16 +87,23 @@ export function canTakePosition(conditionId: string, side: string): boolean {
 }
 
 // ─── Resolution Checking ─────────────────────────────────────────────────────
+// Self-resolve 5-min updown contracts by fetching the Binance price at endTs
+// and comparing to strike price. No Gamma API needed.
+
+const RESOLVE_GRACE_MS = 15_000; // Wait 15s after endTs for kline data to be available
+
+/** Cache of endTs prices to avoid repeated kline fetches */
+const endPriceCache = new Map<string, number>();
 
 async function checkResolutions(): Promise<void> {
   const now = Date.now();
-  // Only check positions whose contracts have expired
-  const expired = openPositions.filter((p) => p.trade.endTs <= now);
+  // Only check positions whose contracts have expired + grace period
+  const expired = openPositions.filter((p) => p.trade.endTs + RESOLVE_GRACE_MS <= now);
   if (expired.length === 0) return;
 
   for (const pos of expired) {
     try {
-      const resolved = await fetchResolution(pos.trade.conditionId);
+      const resolved = await selfResolve(pos.trade);
       if (resolved !== null) {
         closePosition(pos, resolved);
       }
@@ -106,36 +113,86 @@ async function checkResolutions(): Promise<void> {
   }
 }
 
-async function fetchResolution(conditionId: string): Promise<string | null> {
+/**
+ * Self-resolve a 5-min updown contract:
+ * 1. Fetch Binance kline at startTs (endTs - 5min) to get the strike price
+ * 2. Fetch Binance kline at endTs to get the closing price
+ * 3. If close > strike → "Up", else → "Down"
+ */
+async function selfResolve(trade: Trade): Promise<string | null> {
+  const CONTRACT_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+  const startTs = trade.endTs - CONTRACT_DURATION_MS;
+
+  // ─── Get strike price (price at contract start) ────────────────────
+  let strikePrice = trade.strikePrice;
+
+  if (!strikePrice || strikePrice <= 0) {
+    // Strike not stored on trade — fetch from Binance kline at startTs
+    const startCacheKey = `${trade.asset}:${startTs}`;
+    strikePrice = endPriceCache.get(startCacheKey) ?? 0;
+
+    if (!strikePrice || strikePrice <= 0) {
+      const fetched = await fetchPriceAtTime(trade.asset, startTs);
+      strikePrice = fetched ?? 0;
+      if (strikePrice > 0) {
+        endPriceCache.set(startCacheKey, strikePrice);
+      }
+    }
+  }
+
+  if (!strikePrice || strikePrice <= 0) {
+    log.debug(`Cannot self-resolve ${trade.conditionId.slice(0, 10)}: strike kline unavailable at startTs`);
+    return null;
+  }
+
+  // ─── Get end price (price at contract end) ─────────────────────────
+  const endCacheKey = `${trade.asset}:${trade.endTs}`;
+  let endPrice: number | undefined = endPriceCache.get(endCacheKey);
+
+  if (!endPrice) {
+    const fetched = await fetchPriceAtTime(trade.asset, trade.endTs);
+    endPrice = fetched ?? undefined;
+    if (endPrice && endPrice > 0) {
+      endPriceCache.set(endCacheKey, endPrice);
+    }
+  }
+
+  if (!endPrice || endPrice <= 0) {
+    log.debug(`Cannot self-resolve ${trade.conditionId.slice(0, 10)}: end kline unavailable at endTs`);
+    return null;
+  }
+
+  // ─── Compare: if price at end > strike → "Up" won ─────────────────
+  const outcome = endPrice > strikePrice ? "Up" : "Down";
+  log.info(
+    `Self-resolve: ${trade.asset} start=$${strikePrice.toFixed(2)} end=$${endPrice.toFixed(2)} → ${outcome}`
+  );
+  return outcome;
+}
+
+/** Fetch the Binance price at a specific timestamp using klines API. */
+async function fetchPriceAtTime(asset: string, ts: number): Promise<number | null> {
   try {
-    const res = await axios.get(`${URLS.gammaApi}/markets`, {
-      params: { condition_id: conditionId, limit: 1 },
+    const symbol = asset === "BTC" ? "BTCUSDT" : "ETHUSDT";
+    const res = await axios.get(URLS.binanceKlines, {
+      params: {
+        symbol,
+        interval: "1s",
+        startTime: ts,
+        limit: 1,
+      },
       timeout: 5000,
     });
 
-    const markets: any[] = res.data || [];
-    if (markets.length === 0) return null;
-
-    const m = markets[0];
-    // Check if the market has resolved
-    if (m.resolved === true || m.closed === true) {
-      // Determine the winning outcome
-      const outcomes: string[] = m.outcomes ? JSON.parse(m.outcomes) : [];
-      const prices: string[] = m.outcomePrices ? JSON.parse(m.outcomePrices) : [];
-
-      for (let i = 0; i < outcomes.length; i++) {
-        const price = parseFloat(prices[i] || "0");
-        if (price >= 0.95) {
-          return outcomes[i]; // e.g., "Up" or "Down"
-        }
-      }
-
-      // If we can't determine the winner from prices, check the winner field
-      if (m.winner) return m.winner;
+    const klines: any[] = res.data || [];
+    if (klines.length > 0) {
+      // Kline format: [openTime, open, high, low, close, ...]
+      const close = parseFloat(klines[0][4]);
+      if (close > 0) return close;
     }
-
-    return null; // Not yet resolved
-  } catch {
+    return null;
+  } catch (err: any) {
+    log.debug(`Kline fetch failed for ${asset} at ${ts}: ${err.message}`);
     return null;
   }
 }

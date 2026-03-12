@@ -51,90 +51,103 @@ export function getActiveContracts(): Contract[] {
 // ─── Scanning ────────────────────────────────────────────────────────────────
 
 async function scan(): Promise<void> {
-  try {
-    const now = new Date();
-    // Search window: contracts ending 1 min from now up to 10 min out
-    const minEnd = new Date(now.getTime() + 60_000).toISOString();
-    const maxEnd = new Date(now.getTime() + 10 * 60_000).toISOString();
+  let newCount = 0;
+  const now = Date.now();
 
-    const res = await axios.get(`${URLS.gammaApi}/markets`, {
-      params: {
-        end_date_min: minEnd,
-        end_date_max: maxEnd,
-        closed: false,
-        limit: 100,
-      },
-      timeout: 5000,
-    });
+  // Two-pass scan (matching V1 approach):
+  //   Pass 1: Contracts ending NOW → +10 min (currently active + about to start)
+  //   Pass 2: Contracts ending +10 min → +30 min (upcoming, for pre-subscription)
+  const passes = [
+    { end_date_min: new Date(now).toISOString(), end_date_max: new Date(now + 10 * 60_000).toISOString(), label: "active" },
+    { end_date_min: new Date(now + 10 * 60_000).toISOString(), end_date_max: new Date(now + 30 * 60_000).toISOString(), label: "upcoming" },
+  ];
 
-    const markets: any[] = res.data || [];
-    let newCount = 0;
-
-    for (const m of markets) {
-      const slug: string = m.slug || "";
-      if (!SLUG_REGEX.test(slug)) continue;
-
-      const conditionId: string = m.condition_id || m.conditionId || "";
-      if (!conditionId) continue;
-      if (contracts.has(conditionId)) continue; // Already cached
-
-      const asset: Asset = slug.startsWith("btc") ? "BTC" : "ETH";
-      const endTs = new Date(m.end_date_iso || m.endDate || 0).getTime();
-      const rawTokenIds = m.clob_token_ids || m.clobTokenIds || "[]";
-      const clobTokenIds: string[] = typeof rawTokenIds === "string" ? JSON.parse(rawTokenIds) : rawTokenIds;
-      const rawOutcomes = m.outcomes || '["Up","Down"]';
-      const outcomes: string[] = typeof rawOutcomes === "string" ? JSON.parse(rawOutcomes) : rawOutcomes;
-
-      if (clobTokenIds.length < 2) continue;
-
-      // Compute 5-min window start (endTs - 5min)
-      const durationMs = 5 * 60 * 1000;
-      const windowStartTs = endTs - durationMs;
-
-      // Fetch strike price from Binance klines
-      const strikePrice = await fetchStrikePrice(asset, windowStartTs);
-
-      const contract: Contract = {
-        conditionId,
-        title: m.question || m.title || slug,
-        slug,
-        endTs,
-        windowStartTs,
-        durationMs,
-        clobTokenIds,
-        outcomes,
-        asset,
-        strikePrice,
-        fetchedAt: Date.now(),
-      };
-
-      // Store in both indexes
-      contracts.set(conditionId, contract);
-      for (const tid of clobTokenIds) {
-        tokenIndex.set(tid, contract);
-      }
-
-      // Pre-subscribe token IDs to book module
-      book.subscribe(clobTokenIds);
-      newCount++;
-
-      log.info(`New contract: ${contract.title}`, {
-        conditionId: conditionId.slice(0, 10) + "...",
-        asset,
-        endTs: new Date(endTs).toISOString(),
-        strike: strikePrice,
+  for (const pass of passes) {
+    try {
+      const res = await axios.get(`${URLS.gammaApi}/markets`, {
+        params: {
+          end_date_min: pass.end_date_min,
+          end_date_max: pass.end_date_max,
+          closed: false,
+          limit: 100,
+          order: "endDate",
+          ascending: true,
+        },
+        timeout: 5000,
       });
-    }
 
-    if (newCount > 0) {
-      log.info(`Scan found ${newCount} new contracts (${contracts.size} total cached)`);
-    }
+      const markets: any[] = res.data || [];
 
-    // Prune expired contracts (ended more than 2 min ago)
-    pruneExpired();
-  } catch (err: any) {
-    log.error("Scan failed", err.message);
+      for (const m of markets) {
+        const slug: string = m.slug || "";
+        if (!SLUG_REGEX.test(slug)) continue;
+
+        const conditionId: string = m.conditionId || m.condition_id || "";
+        if (!conditionId) continue;
+        if (contracts.has(conditionId)) continue; // Already cached
+
+        const asset: Asset = slug.startsWith("btc") ? "BTC" : "ETH";
+        const endTs = new Date(m.end_date_iso || m.endDate || 0).getTime();
+
+        // Skip contracts that already ended
+        if (endTs > 0 && endTs < now) continue;
+
+        const rawTokenIds = m.clob_token_ids || m.clobTokenIds || "[]";
+        const clobTokenIds: string[] = typeof rawTokenIds === "string" ? JSON.parse(rawTokenIds) : rawTokenIds;
+        const rawOutcomes = m.outcomes || '["Up","Down"]';
+        const outcomes: string[] = typeof rawOutcomes === "string" ? JSON.parse(rawOutcomes) : rawOutcomes;
+
+        if (clobTokenIds.length < 2) continue;
+
+        // Compute 5-min window start (endTs - 5min)
+        const durationMs = 5 * 60 * 1000;
+        const windowStartTs = endTs - durationMs;
+
+        // Fetch strike price from Binance klines
+        const strikePrice = await fetchStrikePrice(asset, windowStartTs);
+
+        const contract: Contract = {
+          conditionId,
+          title: m.question || m.title || slug,
+          slug,
+          endTs,
+          windowStartTs,
+          durationMs,
+          clobTokenIds,
+          outcomes,
+          asset,
+          strikePrice,
+          fetchedAt: Date.now(),
+        };
+
+        // Store in both indexes
+        contracts.set(conditionId, contract);
+        for (const tid of clobTokenIds) {
+          tokenIndex.set(tid, contract);
+        }
+
+        // Pre-subscribe token IDs to book module
+        book.subscribe(clobTokenIds);
+        newCount++;
+
+        log.info(`New contract: ${contract.title}`, {
+          conditionId: conditionId.slice(0, 10) + "...",
+          asset,
+          endTs: new Date(endTs).toISOString(),
+          strike: strikePrice,
+        });
+      }
+    } catch (err: any) {
+      log.error(`Scan ${pass.label} failed`, err.message);
+    }
   }
+
+  if (newCount > 0) {
+    log.info(`Scan found ${newCount} new contracts (${contracts.size} total cached)`);
+  }
+
+  // Prune expired contracts (ended more than 5 min ago — matching V1)
+  pruneExpired();
 }
 
 /** Fetch the close price of the 1-min kline at the contract's window start. */
@@ -165,9 +178,9 @@ async function fetchStrikePrice(asset: Asset, windowStartTs: number): Promise<nu
   }
 }
 
-/** Remove contracts that expired more than 2 minutes ago. */
+/** Remove contracts that expired more than 5 minutes ago (matching V1). */
 function pruneExpired(): void {
-  const cutoff = Date.now() - 2 * 60_000;
+  const cutoff = Date.now() - 5 * 60_000;
   for (const [cid, c] of contracts) {
     if (c.endTs < cutoff) {
       for (const tid of c.clobTokenIds) {
