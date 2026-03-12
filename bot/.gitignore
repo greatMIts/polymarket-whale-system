@@ -1,6 +1,0 @@
-node_modules/
-dist/
-data/trades.jsonl
-data/bot_trades.jsonl
-data/settings.json
-*.log
